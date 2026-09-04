@@ -15,6 +15,7 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+
         </dependency>
 
         <dependency>
@@ -28,8 +29,8 @@
         </dependency>
 
         <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <groupId>org.mybatis.spring.boot</groupId>
+            <artifactId>mybatis-spring-boot-starter</artifactId>
         </dependency>
 
         <dependency>
@@ -59,6 +60,13 @@
         <dependency>
             <groupId>com.anxin</groupId>
             <artifactId>anxin-common</artifactId>
+        </dependency>
+
+        <!-- Lombok（@Data/@Builder/@Slf4j），版本由父 pom 统一管理 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
 
     </dependencies>
