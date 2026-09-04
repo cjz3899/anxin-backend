@@ -1,0 +1,41 @@
+# ================= 生产环境 =================
+# 敏感值（host/账号/密码/密钥）全部通过环境变量注入，不设默认值：缺失时启动直接失败，防止明文落库
+# 部署时注入：export / Docker env / K8s Secret，然后 java -jar anxin-web.jar --spring.profiles.active=prod
+
+anxin:
+  mysql:
+    ip: ${MYSQL_HOST}
+    port: 3306
+    db: ${MYSQL_DB}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+  redis:
+    host: ${REDIS_HOST}
+    port: 6379
+    password: ${REDIS_PASSWORD}
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration: 3600000  # 1小时（毫秒）
+  mq:
+    name-server: ${ROCKETMQ_NAME_SERVER}
+    producer-group: anxin-producer-group
+    default-topic: anxin-topic
+
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+# SQL 日志走 slf4j，由日志级别控制，不直打 stdout
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    root: info
+    com.anxin: info

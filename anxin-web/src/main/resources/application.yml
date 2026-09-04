@@ -1,0 +1,63 @@
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: anxin-web
+  profiles:
+    active: dev  # 默认激活 dev；生产启动时用 --spring.profiles.active=prod 覆盖
+
+  datasource:
+    url: jdbc:mysql://${anxin.mysql.ip}:${anxin.mysql.port}/${anxin.mysql.db}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${anxin.mysql.username}
+    password: ${anxin.mysql.password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  data:
+    redis:
+      database: 0
+      host: ${anxin.redis.host}
+      port: ${anxin.redis.port}
+      password: ${anxin.redis.password}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # Jackson 配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+# RocketMQ 配置
+rocketmq:
+  name-server: ${anxin.mq.name-server}
+  producer:
+    group: ${anxin.mq.producer-group}
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:com/anxin/mapper/**/*.xml
+  type-aliases-package: com.anxin.entity
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: true
+    lazy-loading-enabled: true
+    aggressive-lazy-loading: false
