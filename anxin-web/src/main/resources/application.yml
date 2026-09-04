@@ -45,18 +45,28 @@ rocketmq:
   producer:
     group: ${anxin.mq.producer-group}
 
-# MyBatis-Plus 配置
-mybatis-plus:
+# MyBatis 配置
+mybatis:
   mapper-locations: classpath*:com/anxin/mapper/**/*.xml
   type-aliases-package: com.anxin.entity
-  global-config:
-    db-config:
-      id-type: auto
-      logic-delete-field: deleted
-      logic-delete-value: 1
-      logic-not-delete-value: 0
   configuration:
     map-underscore-to-camel-case: true
     cache-enabled: true
     lazy-loading-enabled: true
     aggressive-lazy-loading: false
+
+
+# 微信小程序配置 - 【预留】后期拿到 appid/secret 后填写真实值
+wechat:
+  appid: ""                 # 小程序 AppID（后期填）
+  secret: ""                # 小程序 AppSecret（后期填）
+  grant-type: authorization_code
+  jscode2session-url: https://api.weixin.qq.com/sns/jscode2session
+
+
+# JWT 配置（本地开发占位；生产用 application-prod.yml 的环境变量 JWT_SECRET）
+anxin:
+  jwt:
+    secret: anxin-dev-secret-key-for-local-dev-only-2026
+    expiration: 3600000     # 1小时（毫秒）
+
