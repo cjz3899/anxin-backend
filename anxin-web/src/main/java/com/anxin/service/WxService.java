@@ -6,7 +6,7 @@ import com.anxin.config.properties.WechatProperties;
 import com.anxin.enums.ResultCode;
 import com.anxin.exception.ServiceException;
 import com.anxin.util.HttpClient;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -18,7 +18,7 @@ import java.util.Map;
 @Service
 public class WxService {
 
-    @Autowired
+    @Resource
     private WechatProperties wechatProperties;
 
     /**

@@ -9,15 +9,13 @@ public enum ResultCode {
 
     USER_NOT_EXIST(10001, "用户不存在"),
 
-    ACCOUNT_FROZEN(10002, "账号已被冻结"),
+    WECHAT_AUTH_FAILED(10002, "微信登录失败"),
 
-    WECHAT_AUTH_FAILED(10003, "微信登录失败"),
+    PARAM_ERROR(10003, "参数校验失败"),
 
-    PARAM_ERROR(10004, "参数校验失败"),
+    SYSTEM_ERROR(10004, "系统错误，请稍后重试"),
 
-    SYSTEM_ERROR(10005, "系统错误，请稍后重试"),
-
-    LOGIN_EXPIRED(10006, "登录已过期，请重新登录");
+    LOGIN_EXPIRED(10005, "登录已过期，请重新登录");
 
     private final Integer code;
 

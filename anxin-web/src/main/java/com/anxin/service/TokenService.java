@@ -70,9 +70,6 @@ public class TokenService {
         if (user == null) {
             throw new ServiceException(ResultCode.USER_NOT_EXIST);
         }
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            throw new ServiceException(ResultCode.ACCOUNT_FROZEN);
-        }
 
         TokenPair pair = issueToken(userId);
         return LoginVO.builder()

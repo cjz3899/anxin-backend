@@ -39,11 +39,6 @@ public class User implements Serializable {
     private String avatar;
 
     /**
-     * 账号状态：0 冻结，1 正常
-     */
-    private Integer status;
-
-    /**
      * 创建时间
      */
     private LocalDateTime createdTime;

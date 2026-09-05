@@ -15,7 +15,6 @@ CREATE TABLE `user`
     `openid`       VARCHAR(64) NOT NULL COMMENT '微信用户唯一标识',
     `nickname`     VARCHAR(100)         DEFAULT NULL COMMENT '用户昵称',
     `avatar`       VARCHAR(500)         DEFAULT NULL COMMENT '用户头像URL',
-    `status`       TINYINT     NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-正常',
     `created_time` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_time` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),

@@ -33,16 +33,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         if (user == null) {
             user = new User();
             user.setOpenid(openid);
-            user.setStatus(1);
             try {
                 save(user);
             } catch (DuplicateKeyException e) {
                 user = getOne(new LambdaQueryWrapper<User>().eq(User::getOpenid, openid));
             }
-        }
-
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            throw new ServiceException(ResultCode.ACCOUNT_FROZEN);
         }
         return user;
     }
