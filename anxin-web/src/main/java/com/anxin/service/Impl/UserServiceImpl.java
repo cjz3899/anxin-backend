@@ -1,59 +1,56 @@
-package com.anxin.service.Impl;
+package com.anxin.service.impl;
 
-import com.anxin.dto.UserLoginDTO;
+import com.anxin.dto.LoginDTO;
+import com.anxin.dto.ProfileDTO;
 import com.anxin.entity.User;
-import com.anxin.exception.BaseException;
+import com.anxin.enums.ResultCode;
+import com.anxin.exception.ServiceException;
 import com.anxin.mapper.UserMapper;
-import com.anxin.service.UserService;
+import com.anxin.service.IUserService;
 import com.anxin.service.WxService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.anxin.threadlocal.BaseContext;
+import com.anxin.vo.UserVO;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import jakarta.annotation.Resource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
-/**
- * 用户业务实现类。数据库操作使用原生 MyBatis（UserMapper 注解 SQL）。
- */
 @Service
-public class UserServiceImpl implements UserService {
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
 
-    @Autowired
-    private UserMapper userMapper;
-
-    @Autowired
+    @Resource
     private WxService wxService;
 
     @Override
-    public User wxlogin(UserLoginDTO dto) {
-        // 1. code 换 openid（调用微信服务）
+    public User wxlogin(LoginDTO dto) {
         String openid = wxService.code2Session(dto.getCode());
 
-        // 2. MyBatis：按 openid 查询
-        User user = userMapper.selectByOpenid(openid);
+        User user = getOne(new LambdaQueryWrapper<User>().eq(User::getOpenid, openid));
 
-        // 查不到则首次自动注册（id 由数据库自增生成）
         if (user == null) {
             user = new User();
             user.setOpenid(openid);
             user.setStatus(1);
-            LocalDateTime now = LocalDateTime.now();
-            user.setCreatedTime(now);
-            user.setUpdatedTime(now);
-            userMapper.insert(user);
+            try {
+                save(user);
+            } catch (DuplicateKeyException e) {
+                user = getOne(new LambdaQueryWrapper<User>().eq(User::getOpenid, openid));
+            }
         }
 
-        // 3. 状态校验（0 冻结）
         if (user.getStatus() != null && user.getStatus() == 0) {
-            throw new BaseException("账号已被冻结");
+            throw new ServiceException(ResultCode.ACCOUNT_FROZEN);
         }
         return user;
     }
 
-    @Override
-    public User updateProfile(Long id, String nickname, String avatar) {
-        User user = userMapper.selectById(id);
+    private User updateProfile(Long id, String nickname, String avatar) {
+        User user = getById(id);
         if (user == null) {
-            throw new BaseException("用户不存在");
+            throw new ServiceException(ResultCode.USER_NOT_EXIST);
         }
         if (nickname != null) {
             user.setNickname(nickname);
@@ -62,7 +59,18 @@ public class UserServiceImpl implements UserService {
             user.setAvatar(avatar);
         }
         user.setUpdatedTime(LocalDateTime.now());
-        userMapper.updateById(user);
+        updateById(user);
         return user;
+    }
+
+    @Override
+    public UserVO profile(ProfileDTO dto) {
+        Long userId = BaseContext.getCurrentId();
+        User user = updateProfile(userId, dto.getNickname(), dto.getAvatar());
+        return UserVO.builder()
+                .id(user.getId())
+                .nickname(user.getNickname())
+                .avatar(user.getAvatar())
+                .build();
     }
 }

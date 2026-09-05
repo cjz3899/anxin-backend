@@ -1,7 +1,7 @@
 package com.anxin.config;
 
 import com.anxin.interceptor.JwtTokenUserInterceptor;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.annotation.Resource;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -12,14 +12,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    @Autowired
+    @Resource
     private JwtTokenUserInterceptor jwtTokenUserInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(jwtTokenUserInterceptor)
                 .addPathPatterns("/api/user/**")
-                // 登录不需要 token，放行；register（完善资料）需要 token，走拦截器
-                .excludePathPatterns("/api/user/login");
+                .excludePathPatterns("/api/user/login", "/api/user/refresh");
     }
 }

@@ -1,8 +1,5 @@
-package com.anxin.context;
+package com.anxin.threadlocal;
 
-/**
- * 基于 ThreadLocal 的当前登录用户上下文持有器。
- */
 public class BaseContext {
 
     private static final ThreadLocal<Long> THREAD_LOCAL = new ThreadLocal<>();

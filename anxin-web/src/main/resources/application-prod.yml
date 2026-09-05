@@ -14,8 +14,10 @@ anxin:
     port: 6379
     password: ${REDIS_PASSWORD}
   jwt:
-    secret: ${JWT_SECRET}
-    expiration: 3600000  # 1小时（毫秒）
+    access-secret: ${JWT_ACCESS_SECRET}
+    refresh-secret: ${JWT_REFRESH_SECRET}
+    access-expiration: ${JWT_ACCESS_EXPIRATION:7200000}
+    refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
   mq:
     name-server: ${ROCKETMQ_NAME_SERVER}
     producer-group: anxin-producer-group

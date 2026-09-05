@@ -1,14 +1,16 @@
-package com.anxin.Util;
+package com.anxin.util;
 
 /**
  * 雪花算法 ID 生成器。
- *
+ * <p>
  * 单机默认 workerId=1、datacenterId=0；多实例部署时需改为从配置注入，避免 ID 冲突。
  * 生成的是 19 位 long，返回给前端时记得序列化为字符串（防 JS 精度丢失）。
  */
 public class SnowUtil {
 
-    /** 起始时间戳（2021-01-01 00:00:00），可自定义 */
+    /**
+     * 起始时间戳（2021-01-01 00:00:00），可自定义
+     */
     private static final long START_TIMESTAMP = 1609459200000L;
 
     private static final long WORKER_ID_BITS = 5L;

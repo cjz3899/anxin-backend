@@ -1,4 +1,4 @@
-package com.anxin.Util;
+package com.anxin.util;
 
 import cn.hutool.json.JSONUtil;
 import org.apache.http.NameValuePair;

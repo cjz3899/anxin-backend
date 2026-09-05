@@ -10,15 +10,15 @@ import lombok.Data;
  */
 @Data
 @Builder
-public class UserLoginVO {
+public class LoginVO {
 
-    /** 用户ID（数据库自增，序列化为字符串，防止前端 JS 精度丢失） */
+    /**
+     * 用户ID（数据库自增，序列化为字符串，防止前端 JS 精度丢失）
+     */
     @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
-    /** JWT 令牌 */
-    private String token;
+    private String accessToken;
 
-    /** 微信openid */
-    private String openid;
+    private String refreshToken;
 }

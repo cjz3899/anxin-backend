@@ -7,6 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "anxin.jwt")
 public record JwtProperties(
-        String secret,
-        Long expiration) {
+        String accessSecret,
+        String refreshSecret,
+        Long accessExpiration,
+        Long refreshExpiration) {
 }

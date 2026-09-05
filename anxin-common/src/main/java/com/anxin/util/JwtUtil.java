@@ -1,4 +1,4 @@
-package com.anxin.Util;
+package com.anxin.util;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -66,7 +66,9 @@ public class JwtUtil {
                 .getPayload();
     }
 
-    /** 便捷方法：从 token 中取出 userId（claim key 为 userId） */
+    /**
+     * 便捷方法：从 token 中取出 userId（claim key 为 userId）
+     */
     public static Long getUserId(String secretKey, String token) {
         Object id = parseJWT(secretKey, token).get("userId");
         return id == null ? null : Long.valueOf(id.toString());

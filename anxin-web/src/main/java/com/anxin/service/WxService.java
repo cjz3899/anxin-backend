@@ -2,9 +2,10 @@ package com.anxin.service;
 
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.anxin.Util.HttpClient;
 import com.anxin.config.properties.WechatProperties;
-import com.anxin.exception.BaseException;
+import com.anxin.enums.ResultCode;
+import com.anxin.exception.ServiceException;
+import com.anxin.util.HttpClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -24,10 +25,6 @@ public class WxService {
      * 调用微信 jscode2session 接口，用 code 换取 openid。
      */
     public String code2Session(String code) {
-        if (code == null || code.isEmpty()) {
-            throw new BaseException("code 不能为空");
-        }
-
         Map<String, String> params = new HashMap<>();
         params.put("appid", wechatProperties.appid());
         params.put("secret", wechatProperties.secret());
@@ -39,7 +36,8 @@ public class WxService {
 
         Integer errcode = json.getInt("errcode");
         if (errcode != null && errcode != 0) {
-            throw new BaseException("微信登录失败: " + json.getStr("errmsg"));
+            throw new ServiceException(ResultCode.WECHAT_AUTH_FAILED.getCode(),
+                    ResultCode.WECHAT_AUTH_FAILED.getMsg() + ": " + json.getStr("errmsg"));
         }
         return json.getStr("openid");
     }

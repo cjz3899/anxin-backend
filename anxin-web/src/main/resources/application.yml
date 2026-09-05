@@ -45,8 +45,8 @@ rocketmq:
   producer:
     group: ${anxin.mq.producer-group}
 
-# MyBatis 配置
-mybatis:
+# MyBatis-Plus 配置
+mybatis-plus:
   mapper-locations: classpath*:com/anxin/mapper/**/*.xml
   type-aliases-package: com.anxin.entity
   configuration:
@@ -64,9 +64,11 @@ wechat:
   jscode2session-url: https://api.weixin.qq.com/sns/jscode2session
 
 
-# JWT 配置（本地开发占位；生产用 application-prod.yml 的环境变量 JWT_SECRET）
+# JWT 配置（本地开发占位；生产用 application-prod.yml 的环境变量注入）
 anxin:
   jwt:
-    secret: anxin-dev-secret-key-for-local-dev-only-2026
-    expiration: 3600000     # 1小时（毫秒）
+    access-secret: anxin-dev-access-secret-key-for-local-dev-only-2026
+    refresh-secret: anxin-dev-refresh-secret-key-for-local-dev-only-2026
+    access-expiration: 7200000     # 2小时（毫秒）
+    refresh-expiration: 604800000  # 7天（毫秒）
 
