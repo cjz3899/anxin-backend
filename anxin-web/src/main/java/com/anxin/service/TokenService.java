@@ -28,7 +28,7 @@ public class TokenService {
     @Resource
     private IUserService userService;
 
-    public TokenPair issueToken(Long userId) {
+    public TokenPair generateLoginTokenPair(Long userId) {
         TokenPair pair = new TokenPair();
         pair.setAccessToken(createToken(jwtProperties.accessSecret(), jwtProperties.accessExpiration(), userId, JwtClaimsConstant.TOKEN_TYPE_ACCESS));
         pair.setRefreshToken(createToken(jwtProperties.refreshSecret(), jwtProperties.refreshExpiration(), userId, JwtClaimsConstant.TOKEN_TYPE_REFRESH));
@@ -71,7 +71,7 @@ public class TokenService {
             throw new ServiceException(ResultCode.USER_NOT_EXIST);
         }
 
-        TokenPair pair = issueToken(userId);
+        TokenPair pair = generateLoginTokenPair(userId);
         return LoginVO.builder()
                 .id(user.getId())
                 .accessToken(pair.getAccessToken())

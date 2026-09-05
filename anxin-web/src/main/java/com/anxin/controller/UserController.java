@@ -35,7 +35,7 @@ public class UserController {
     @PostMapping("/login")
     public Result<LoginVO> login(@Valid @RequestBody LoginDTO dto) {
         User user = userService.wxlogin(dto);
-        TokenPair pair = tokenService.issueToken(user.getId());
+        TokenPair pair = tokenService.generateLoginTokenPair(user.getId());
         LoginVO vo = LoginVO.builder()
                 .id(user.getId())
                 .accessToken(pair.getAccessToken())
