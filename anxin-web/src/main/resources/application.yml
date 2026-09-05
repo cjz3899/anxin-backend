@@ -59,7 +59,7 @@ mybatis-plus:
 # 微信小程序配置 - 【预留】后期拿到 appid/secret 后填写真实值
 wechat:
   appid: "wxfecc26a8ec2ed78e"                 # 小程序 AppID（后期填）
-  secret: "3d326f7482d96cf9b87655b80880d13d"  # 小程序 AppSecret（后期填）
+  secret: ""  # 小程序 AppSecret（后期填）
   grant-type: authorization_code
   jscode2session-url: https://api.weixin.qq.com/sns/jscode2session
 
