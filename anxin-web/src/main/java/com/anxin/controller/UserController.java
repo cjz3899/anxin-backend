@@ -55,7 +55,6 @@ public class UserController {
         UserLoginVO vo = UserLoginVO.builder()
                 .id(user.getId())
                 .token(token)
-                .openid(user.getOpenid())
                 .build();
         return Result.success(vo);
     }
@@ -71,7 +70,6 @@ public class UserController {
 
         UserVO vo = UserVO.builder()
                 .id(user.getId())
-                .openid(user.getOpenid())
                 .nickname(user.getNickname())
                 .avatar(user.getAvatar())
                 .build();

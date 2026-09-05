@@ -16,8 +16,6 @@ public class UserVO {
     @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
-    /** 微信openid */
-    private String openid;
 
     /** 昵称 */
     private String nickname;

@@ -32,6 +32,10 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+###Opencode###
+.omo/
+
+
 ### VS Code ###
 .vscode/
 
@@ -50,3 +54,4 @@ anxin-web/src/main/resources/application-dev.yml
 
 ### Mac OS ###
 .DS_Store
+
