@@ -7,7 +7,7 @@ import com.anxin.entity.User;
 import com.anxin.model.TokenPair;
 import com.anxin.result.Result;
 import com.anxin.service.IUserService;
-import com.anxin.service.TokenService;
+import com.anxin.service.support.TokenService;
 import com.anxin.threadlocal.BaseContext;
 import com.anxin.vo.LoginVO;
 import com.anxin.vo.UserVO;

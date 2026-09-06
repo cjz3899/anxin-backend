@@ -56,7 +56,6 @@ CREATE TABLE `document_section`
 (
     `id`           BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `document_id`  BIGINT   NOT NULL COMMENT '文件ID，逻辑关联document.id',
-    `parent_id`    BIGINT   NOT NULL DEFAULT 0 COMMENT '父章节ID，0表示顶级章节',
     `section_no`   VARCHAR(50)       DEFAULT NULL COMMENT '章节/条款编号',
     `title`        VARCHAR(500)      DEFAULT NULL COMMENT '章节标题',
     `content`      TEXT     NOT NULL COMMENT '章节正文',

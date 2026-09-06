@@ -7,7 +7,7 @@ import com.anxin.enums.ResultCode;
 import com.anxin.exception.ServiceException;
 import com.anxin.mapper.UserMapper;
 import com.anxin.service.IUserService;
-import com.anxin.service.WxService;
+import com.anxin.service.support.WxService;
 import com.anxin.threadlocal.BaseContext;
 import com.anxin.vo.UserVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;

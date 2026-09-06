@@ -1,4 +1,4 @@
-package com.anxin.service;
+package com.anxin.service.support;
 
 import com.anxin.config.properties.JwtProperties;
 import com.anxin.constant.JwtClaimsConstant;
@@ -7,6 +7,7 @@ import com.anxin.entity.User;
 import com.anxin.enums.ResultCode;
 import com.anxin.exception.ServiceException;
 import com.anxin.model.TokenPair;
+import com.anxin.service.IUserService;
 import com.anxin.util.JwtUtil;
 import com.anxin.vo.LoginVO;
 import io.jsonwebtoken.Claims;

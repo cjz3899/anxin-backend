@@ -9,42 +9,32 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-
 @Data
-@EqualsAndHashCode(callSuper = false)
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@TableName("user")
-public class User implements Serializable {
+@Builder
+@EqualsAndHashCode(callSuper = false)
+@TableName("document")
+public class Document implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    /**
-     * 微信openid 唯一标识
-     */
-    private String openid;
+    private Long userId;
 
-    /**
-     * 用户昵称
-     */
-    private String nickname;
+    private String fileName;
 
-    /**
-     * 用户头像
-     */
-    private String avatar;
+    private String fileType;
 
-    /**
-     * 创建时间
-     */
+    private Long fileSize;
+
+    private String fileUrl;
+
+    private Integer status;
+
     private LocalDateTime createdTime;
 
-    /**
-     * 更新时间
-     */
     private LocalDateTime updatedTime;
 }

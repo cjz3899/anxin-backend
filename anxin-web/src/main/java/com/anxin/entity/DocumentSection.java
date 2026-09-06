@@ -9,14 +9,13 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-
 @Data
-@EqualsAndHashCode(callSuper = false)
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@TableName("user")
-public class User implements Serializable {
+@Builder
+@EqualsAndHashCode(callSuper = false)
+@TableName("document_section")
+public class DocumentSection implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -24,27 +23,30 @@ public class User implements Serializable {
     private Long id;
 
     /**
-     * 微信openid 唯一标识
+     * 文件id，逻辑关联document.id
      */
-    private String openid;
+    private Long documentId;
 
     /**
-     * 用户昵称
+     * 章节/条款编号
      */
-    private String nickname;
+    private String sectionNo;
+
+    private String title;
+
+    private String content;
 
     /**
-     * 用户头像
+     * 所在页码
      */
-    private String avatar;
+    private Integer pageNo;
 
     /**
-     * 创建时间
+     * 章节内部排序
      */
+    private Integer sort;
+
     private LocalDateTime createdTime;
 
-    /**
-     * 更新时间
-     */
     private LocalDateTime updatedTime;
 }

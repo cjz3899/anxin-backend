@@ -10,6 +10,7 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestControllerAdvice
 public class WebExceptionAdvice {
+
 
     @ExceptionHandler(ServiceException.class)
     public Result<String> serviceExceptionHandler(HttpServletRequest request, ServiceException exception) {
@@ -41,6 +43,12 @@ public class WebExceptionAdvice {
                 })
                 .collect(Collectors.toList());
         return Result.of(ResultCode.PARAM_ERROR.getCode(), ResultCode.PARAM_ERROR.getMsg(), argumentErrorList);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public Result<String> missingServletRequestPartExceptionHandler(HttpServletRequest request, MissingServletRequestPartException ex) {
+        log.error("缺少请求参数 method : {} url : {} query : {}", request.getMethod(), getRequestUrl(request), getRequestQuery(request), ex);
+        return Result.error(ResultCode.PARAM_ERROR.getCode(), "缺少参数：" + ex.getRequestPartName());
     }
 
     @ExceptionHandler(Throwable.class)

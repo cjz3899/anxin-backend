@@ -6,7 +6,11 @@ spring:
     name: anxin-web
   profiles:
     active: dev  # 默认激活 dev；生产启动时用 --spring.profiles.active=prod 覆盖
-
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 12MB
   datasource:
     url: jdbc:mysql://${anxin.mysql.ip}:${anxin.mysql.port}/${anxin.mysql.db}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: ${anxin.mysql.username}
@@ -61,8 +65,14 @@ wechat:
   appid: "wxfecc26a8ec2ed78e"                 # 小程序 AppID（后期填）
   secret: ""  # 小程序 AppSecret（后期填）
   grant-type: authorization_code
+  # 获取 session_key 和 openid
   jscode2session-url: https://api.weixin.qq.com/sns/jscode2session
-
+  # 获取 access_token
+  token-url: https://api.weixin.qq.com/cgi-bin/token
+  # 图片安全检测
+  img-sec-check-url: https://api.weixin.qq.com/wxa/img_sec_check
+  # 媒体文件异步检测
+  media-check-async-url: https://api.weixin.qq.com/wxa/media_check_async
 
 # JWT 配置（本地开发占位；生产用 application-prod.yml 的环境变量注入）
 anxin:
@@ -71,4 +81,11 @@ anxin:
     refresh-secret: anxin-dev-refresh-secret-key-for-local-dev-only-2026
     access-expiration: 7200000     # 2小时（毫秒）
     refresh-expiration: 604800000  # 7天（毫秒）
+  # 阿里云 OSS 配置（AK/SK 通过环境变量注入，禁止写死提交 git）
+  oss:
+    endpoint: ${OSS_ENDPOINT:oss-cn-hangzhou.aliyuncs.com}  # 不带协议
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    bucket: ${OSS_BUCKET:}
+    public-domain: ${OSS_PUBLIC_DOMAIN:}  # 可选自定义域名；为空则自动拼 https://{bucket}.{endpoint}/
 
