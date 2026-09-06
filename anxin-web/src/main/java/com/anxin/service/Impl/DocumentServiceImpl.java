@@ -1,7 +1,6 @@
 package com.anxin.service.impl;
 
 import com.anxin.constant.UploadConstant;
-import com.anxin.dto.AnalysisTaskMessage;
 import com.anxin.entity.AnalysisTask;
 import com.anxin.entity.Document;
 import com.anxin.enums.ResultCode;
@@ -9,8 +8,9 @@ import com.anxin.enums.TaskStatus;
 import com.anxin.exception.ServiceException;
 import com.anxin.mapper.AnalysisTaskMapper;
 import com.anxin.mapper.DocumentMapper;
+import com.anxin.mq.message.AnalysisTaskMessage;
+import com.anxin.mq.producer.TaskProducer;
 import com.anxin.service.IDocumentService;
-import com.anxin.service.TaskDispatcher;
 import com.anxin.service.support.FileTypeService;
 import com.anxin.service.support.OssStorageService;
 import com.anxin.service.support.WxSecurityService;
@@ -28,7 +28,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * 文档上传与分析任务创建。
+ * 文档上传与分析任务创建
  */
 @Slf4j
 @Service
@@ -57,7 +57,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
     private AnalysisTaskMapper analysisTaskMapper;
 
     @Resource
-    private TaskDispatcher taskDispatcher;
+    private TaskProducer taskProducer;
 
     @Override
     public DocumentUploadVO upload(MultipartFile file) {
@@ -66,9 +66,10 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         }
         String originalName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         long size = file.getSize();
+        //获取文件扩展名
         String ext = extensionOf(originalName);
 
-        // 1) 初步大小闸门：按扩展名预判类别（图片5MB/文档10MB），超限立即拒绝，不读流
+        //初步大小闸门：按扩展名预判类别（图片5MB/文档10MB），超限立即拒绝
         boolean likelyImage = IMAGE_EXTENSIONS.contains(ext);
         long preLimit = likelyImage ? UploadConstant.IMAGE_MAX_BYTES : UploadConstant.DOC_MAX_BYTES;
         if (size > preLimit) {
@@ -76,7 +77,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                     likelyImage ? "图片大小不能超过5MB" : "文档大小不能超过10MB");
         }
 
-        // 2) 读流（此时大小已被闸门限制在 10MB 内）
+        //读流（此时大小已被闸门限制在 10MB 内）
         byte[] bytes;
         try {
             bytes = file.getBytes();
@@ -85,16 +86,16 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
             throw new ServiceException(ResultCode.FILE_SAVE_FAILED);
         }
 
-        // 3) Tika 按文件头魔数检测真实类型，白名单校验（防改名伪装的主闸门）
+        //Tika 按文件头魔数检测真实类型，白名单校验（isImage/isDocument，防改名伪装的主闸门）
         String mime = fileTypeService.detectMime(bytes);
-        if (!fileTypeService.isUploadAllowed(mime)) {
+        if (!fileTypeService.isImage(mime) && !fileTypeService.isDocument(mime)) {
             log.warn("拒绝非白名单文件 fileName : {}, 真实类型 : {}", originalName, mime);
             throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getCode(),
                     "不支持的文件类型，仅支持 PDF/Word 与 jpg/png 图片");
         }
 
-        // 4) 按真实类型复核大小上限
-        if (fileTypeService.isUploadImage(mime)) {
+        //按真实类型复核大小上限（图片5MB，文档10MB）
+        if (fileTypeService.isImage(mime)) {
             if (size > UploadConstant.IMAGE_MAX_BYTES) {
                 throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "图片大小不能超过5MB");
             }
@@ -102,7 +103,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 // 图片 ≤4MB：同步 imgSecCheck，违规（87014）在此抛 10008，文件不会进入 OSS
                 wxSecurityService.checkImage(bytes);
             } else {
-                // 图片 >4MB：走异步审核（当前为骨架 mock 放行，见 AnalysisTaskProcessor TODO）
+                // 图片 >4MB：走异步审核（当前为骨架 mock 放行，见 AnalysisTaskConsumer TODO）
                 log.warn("图片超过4MB，异步审核暂为骨架，直接放行 size : {}", size);
             }
         } else {
@@ -110,11 +111,11 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
             log.warn("文档类文件异步审核暂为骨架，直接放行 mime : {}", mime);
         }
 
-        // 5) 存储：UUID + Tika 真实后缀，路径不拼接用户文件名
+        //存储：UUID + Tika 真实后缀，路径不拼接用户文件名
         String key = ossStorageService.upload(bytes, mime, "documents", fileTypeService.realExtOf(mime));
         String fileUrl = ossStorageService.toUrl(key);
 
-        // 6) 落库 document（PENDING）
+        //落库 document（PENDING）
         String fileType = fileTypeNameOf(mime);
         Document document = Document.builder()
                 .userId(BaseContext.getCurrentId())
@@ -128,7 +129,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .build();
         save(document);
 
-        // 7) 落库 analysis_task（PENDING）并投递异步任务
+        //落库 analysis_task（PENDING）并投递异步任务
         AnalysisTask task = AnalysisTask.builder()
                 .documentId(document.getId())
                 .taskType(TASK_TYPE_RISK_ANALYSIS)
@@ -139,7 +140,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .build();
         analysisTaskMapper.insert(task);
 
-        taskDispatcher.dispatch(AnalysisTaskMessage.builder()
+        taskProducer.dispatch(AnalysisTaskMessage.builder()
                 .taskId(task.getId())
                 .documentId(document.getId())
                 .fileUrl(fileUrl)
@@ -166,7 +167,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
      * 真实 MIME → document.file_type 存储值
      */
     private String fileTypeNameOf(String mime) {
-        if (fileTypeService.isUploadImage(mime)) {
+        if (fileTypeService.isImage(mime)) {
             return "IMAGE";
         }
         return switch (mime) {

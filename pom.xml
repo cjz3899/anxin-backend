@@ -15,7 +15,6 @@
         <module>anxin-ai</module>
         <module>anxin-document</module>
         <module>anxin-rag</module>
-        <module>anxin-mq</module>
         <module>anxin-web</module>
     </modules>
 
@@ -113,11 +112,6 @@
             <dependency>
                 <groupId>com.anxin</groupId>
                 <artifactId>anxin-rag-vector</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.anxin</groupId>
-                <artifactId>anxin-mq</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>

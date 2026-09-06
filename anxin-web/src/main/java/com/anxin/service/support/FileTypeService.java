@@ -14,25 +14,20 @@ public class FileTypeService {
     private final Tika tika = new Tika();
 
     /**
-     * 文档白名单
+     * 文档白名单（上传白名单口径，题目要求：PDF/Word）
      */
     private static final Set<String> DOCUMENT_MIME_TYPES = Set.of(
             "application/pdf",
             "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
-            "application/rtf"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
 
     /**
-     * 图片白名单
+     * 图片白名单（上传白名单口径，题目要求：jpg/png）
      */
     private static final Set<String> IMAGE_MIME_TYPES = Set.of(
             "image/jpeg",
-            "image/png",
-            "image/gif",
-            "image/bmp",
-            "image/webp"
+            "image/png"
     );
 
     /**
@@ -43,17 +38,6 @@ public class FileTypeService {
             "image/png",
             "image/gif",
             "image/bmp"
-    );
-
-    /**
-     * 文件上传白名单（题目要求：图片 jpg/png + PDF/Word）
-     */
-    private static final Set<String> UPLOAD_MIME_TYPES = Set.of(
-            "image/jpeg",
-            "image/png",
-            "application/pdf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
 
     /**
@@ -90,14 +74,6 @@ public class FileTypeService {
 
     public boolean isAvatar(String mime) {
         return AVATAR_MIME_TYPES.contains(mime);
-    }
-
-    public boolean isUploadAllowed(String mime) {
-        return UPLOAD_MIME_TYPES.contains(mime);
-    }
-
-    public boolean isUploadImage(String mime) {
-        return "image/jpeg".equals(mime) || "image/png".equals(mime);
     }
 
     public boolean isDocument(String mime) {
