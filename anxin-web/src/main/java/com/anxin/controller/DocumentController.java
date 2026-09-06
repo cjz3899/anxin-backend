@@ -18,7 +18,7 @@ public class DocumentController {
     private IDocumentService documentService;
 
     /**
-     * 上传 PDF/Word/图片并创建分析任务，multipart 字段名 file，需登录态 token。
+     * 上传 PDF/Word/图片并创建分析任务，multipart 字段名 file，需登录态 token
      */
     @PostMapping("/upload")
     public Result<DocumentUploadVO> upload(@RequestParam("file") MultipartFile file) {
