@@ -9,6 +9,7 @@ import com.anxin.result.Result;
 import com.anxin.service.IUserService;
 import com.anxin.service.support.TokenService;
 import com.anxin.threadlocal.BaseContext;
+import com.anxin.vo.AvatarVO;
 import com.anxin.vo.LoginVO;
 import com.anxin.vo.UserVO;
 import jakarta.annotation.Resource;
@@ -16,7 +17,9 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/user")
@@ -30,6 +33,16 @@ public class UserController {
     @PostMapping("/profile")
     public Result<UserVO> profile(@Valid @RequestBody ProfileDTO dto) {
         return Result.success(userService.profile(dto));
+    }
+
+    /**
+     * 头像上传（multipart 字段名 file，需登录态 token）：
+     * 校验 ≤2MB / 格式白名单 / 微信内容安全 → 存 OSS → 返回永久 URL。
+     * URL 不在此落库，由前端连同昵称一起 POST /api/user/profile 持久化。
+     */
+    @PostMapping("/avatar")
+    public Result<AvatarVO> avatar(@RequestParam("file") MultipartFile file) {
+        return Result.success("头像上传成功", userService.uploadAvatar(file));
     }
 
     @PostMapping("/login")

@@ -10,6 +10,7 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.util.List;
@@ -49,6 +50,12 @@ public class WebExceptionAdvice {
     public Result<String> missingServletRequestPartExceptionHandler(HttpServletRequest request, MissingServletRequestPartException ex) {
         log.error("缺少请求参数 method : {} url : {} query : {}", request.getMethod(), getRequestUrl(request), getRequestQuery(request), ex);
         return Result.error(ResultCode.PARAM_ERROR.getCode(), "缺少参数：" + ex.getRequestPartName());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Result<String> maxUploadSizeExceededExceptionHandler(HttpServletRequest request, MaxUploadSizeExceededException ex) {
+        log.error("上传文件超出大小限制 method : {} url : {}", request.getMethod(), getRequestUrl(request), ex);
+        return Result.error(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "文件大小超出限制");
     }
 
     @ExceptionHandler(Throwable.class)

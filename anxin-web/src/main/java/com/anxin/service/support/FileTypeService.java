@@ -36,6 +36,27 @@ public class FileTypeService {
     );
 
     /**
+     * 头像图片白名单（微信小程序规范：BMP/JPEG/JPG/GIF/PNG）
+     */
+    private static final Set<String> AVATAR_MIME_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/bmp"
+    );
+
+    /**
+     * 文件上传白名单（题目要求：图片 jpg/png + PDF/Word）
+     */
+    private static final Set<String> UPLOAD_MIME_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+
+    /**
      * MIME类型到扩展名的映射
      */
     private static final Map<String, String> MIME_TO_EXT = Map.of(
@@ -65,6 +86,18 @@ public class FileTypeService {
 
     public boolean isImage(String mime) {
         return IMAGE_MIME_TYPES.contains(mime);
+    }
+
+    public boolean isAvatar(String mime) {
+        return AVATAR_MIME_TYPES.contains(mime);
+    }
+
+    public boolean isUploadAllowed(String mime) {
+        return UPLOAD_MIME_TYPES.contains(mime);
+    }
+
+    public boolean isUploadImage(String mime) {
+        return "image/jpeg".equals(mime) || "image/png".equals(mime);
     }
 
     public boolean isDocument(String mime) {

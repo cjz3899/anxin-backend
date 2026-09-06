@@ -18,7 +18,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(jwtTokenUserInterceptor)
-                .addPathPatterns("/api/user/**")
+                .addPathPatterns("/api/user/**", "/api/document/**")
                 .excludePathPatterns("/api/user/login", "/api/user/refresh");
         // TODO 添加其他拦截器配置
     }
