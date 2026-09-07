@@ -18,6 +18,11 @@
             <artifactId>anxin-common</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.anxin</groupId>
+            <artifactId>anxin-document-parser</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
