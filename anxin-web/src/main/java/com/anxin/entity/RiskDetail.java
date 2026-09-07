@@ -14,27 +14,35 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Builder
 @EqualsAndHashCode(callSuper = false)
-@TableName("document")
-public class Document implements Serializable {
+@TableName("risk_detail")
+public class RiskDetail implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    private Long userId;
+    private Long riskResultId;
 
-    private String fileName;
+    private Long sectionId;
 
-    private String fileType;
+    private String riskType;
 
-    private Long fileSize;
+    private String riskLevel;
 
-    private String fileUrl;
+    private String title;
 
-    private Integer status;
+    private String originalText;
 
-    private String summary;
+    private String reason;
+
+    private String impact;
+
+    private String suggestion;
+
+    private Integer startPosition;
+
+    private Integer endPosition;
 
     private LocalDateTime createdTime;
 
