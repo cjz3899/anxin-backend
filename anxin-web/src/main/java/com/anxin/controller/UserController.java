@@ -14,11 +14,7 @@ import com.anxin.vo.LoginVO;
 import com.anxin.vo.UserVO;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
@@ -64,7 +60,7 @@ public class UserController {
 
     @PostMapping("/logout")
     public Result<Void> logout() {
-        tokenService.logout(BaseContext.getCurrentId());
+        userService.logout(BaseContext.getCurrentId());
         return Result.success();
     }
 }

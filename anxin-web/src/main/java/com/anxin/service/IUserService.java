@@ -25,4 +25,6 @@ public interface IUserService extends IService<User> {
      * 通过后存储到 OSS 并返回永久 URL（本方法不落库，由 /api/user/profile 一并持久化）
      */
     AvatarVO uploadAvatar(MultipartFile file);
+
+    void logout(Long userId);
 }

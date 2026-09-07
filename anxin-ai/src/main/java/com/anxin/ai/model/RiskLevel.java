@@ -1,7 +1,9 @@
 package com.anxin.ai.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import lombok.Getter;
 
+@Getter
 public enum RiskLevel {
     HIGH("高风险"),
     MEDIUM("中风险"),
@@ -11,10 +13,6 @@ public enum RiskLevel {
 
     RiskLevel(String label) {
         this.label = label;
-    }
-
-    public String getLabel() {
-        return label;
     }
 
     @JsonCreator

@@ -1,5 +1,6 @@
 package com.anxin.service.impl;
 
+import com.anxin.constant.RedisKeyConstant;
 import com.anxin.constant.UploadConstant;
 import com.anxin.dto.LoginDTO;
 import com.anxin.dto.ProfileDTO;
@@ -20,6 +21,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -41,6 +43,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Resource
     private WxSecurityService wxSecurityService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public User wxlogin(LoginDTO dto) {
@@ -116,5 +121,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return AvatarVO.builder()
                 .avatar(ossStorageService.toUrl(key))
                 .build();
+    }
+
+    @Override
+    public void logout(Long userId) {
+        stringRedisTemplate.delete(RedisKeyConstant.LOGIN_ACCESS_PREFIX + userId);
+        stringRedisTemplate.delete(RedisKeyConstant.LOGIN_REFRESH_PREFIX + userId);
     }
 }

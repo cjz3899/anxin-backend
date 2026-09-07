@@ -80,11 +80,6 @@ public class TokenService {
                 .build();
     }
 
-    public void logout(Long userId) {
-        stringRedisTemplate.delete(RedisKeyConstant.LOGIN_ACCESS_PREFIX + userId);
-        stringRedisTemplate.delete(RedisKeyConstant.LOGIN_REFRESH_PREFIX + userId);
-    }
-
     private String createToken(String secret, long expiration, Long userId, String type) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(JwtClaimsConstant.USER_ID, userId);
