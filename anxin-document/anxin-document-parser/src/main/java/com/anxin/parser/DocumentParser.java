@@ -1,6 +1,6 @@
-package com.anxin.document.parser;
+package com.anxin.parser;
 
-import com.anxin.document.parser.model.ParsedSection;
+import com.anxin.parser.model.ParsedSection;
 
 import java.io.InputStream;
 import java.util.List;

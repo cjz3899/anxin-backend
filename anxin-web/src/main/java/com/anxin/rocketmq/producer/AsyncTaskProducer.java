@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 /**
- * 基于 @Async 线程池的任务生产者（先行版，将来切换 RocketMQ 时新增 MQ 版生产者即可）。
+ * 基于 @Async 线程池的任务生产者（先行版，将来切换 RocketMQ 时新增 MQ 版生产者即可）
  */
 @Slf4j
 @Service

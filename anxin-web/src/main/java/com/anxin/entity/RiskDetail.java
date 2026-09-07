@@ -28,7 +28,7 @@ public class RiskDetail implements Serializable {
     private Long riskResultId;
 
     /**
-     * 文档章节id，逻辑关联document.id
+     * 文档章节id，逻辑关联document_section.id
      */
     private Long sectionId;
 

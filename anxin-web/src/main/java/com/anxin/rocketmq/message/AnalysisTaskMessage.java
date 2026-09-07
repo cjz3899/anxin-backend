@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 分析任务消息体（异步链路统一契约，JSON 字符串传输）。
+ * 分析任务消息体（异步链路统一契约，JSON 字符串传输）
  */
 @Data
 @Builder

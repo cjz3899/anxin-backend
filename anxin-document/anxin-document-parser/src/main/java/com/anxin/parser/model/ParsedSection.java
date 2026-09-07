@@ -1,4 +1,4 @@
-package com.anxin.document.parser.model;
+package com.anxin.parser.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
