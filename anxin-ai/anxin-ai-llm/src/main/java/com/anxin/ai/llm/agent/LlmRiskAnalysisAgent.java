@@ -2,7 +2,7 @@ package com.anxin.ai.llm.agent;
 
 import com.anxin.ai.llm.model.RiskAnalysisResult;
 import com.anxin.ai.llm.prompt.RiskAnalysisPromptTemplate;
-import com.anxin.document.parser.model.ParsedSection;
+import com.anxin.parser.model.ParsedSection;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;

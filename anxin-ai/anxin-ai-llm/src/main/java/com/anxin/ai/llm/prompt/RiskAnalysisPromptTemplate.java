@@ -1,6 +1,6 @@
 package com.anxin.ai.llm.prompt;
 
-import com.anxin.document.parser.model.ParsedSection;
+import com.anxin.parser.model.ParsedSection;
 
 import java.util.List;
 
