@@ -53,13 +53,7 @@
 
         <dependency>
             <groupId>com.anxin</groupId>
-            <artifactId>anxin-ai-core</artifactId>
-            <version>${revision}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.anxin</groupId>
-            <artifactId>anxin-ai-llm</artifactId>
+            <artifactId>anxin-ai</artifactId>
             <version>${revision}</version>
         </dependency>
 

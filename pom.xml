@@ -82,17 +82,7 @@
             </dependency>
             <dependency>
                 <groupId>com.anxin</groupId>
-                <artifactId>anxin-ai-core</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.anxin</groupId>
-                <artifactId>anxin-ai-llm</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.anxin</groupId>
-                <artifactId>anxin-ai-agent</artifactId>
+                <artifactId>anxin-ai</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
