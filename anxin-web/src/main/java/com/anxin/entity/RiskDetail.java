@@ -22,8 +22,14 @@ public class RiskDetail implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    /**
+     * 风险结果id，逻辑关联risk_result.id
+     */
     private Long riskResultId;
 
+    /**
+     * 文档章节id，逻辑关联document.id
+     */
     private Long sectionId;
 
     private String riskType;

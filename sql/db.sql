@@ -38,7 +38,6 @@ CREATE TABLE `document`
     `file_size`    BIGINT        NOT NULL DEFAULT 0 COMMENT '文件大小，单位：Byte',
     `file_url`     VARCHAR(1000) NOT NULL COMMENT '文件存储地址',
     `status`       TINYINT       NOT NULL DEFAULT 0 COMMENT '文件状态：0-待处理，1-处理中，2-处理完成，3-处理失败',
-    `summary`      VARCHAR(2000)          DEFAULT NULL COMMENT '文件风险摘要',
     `created_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_time` DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`)

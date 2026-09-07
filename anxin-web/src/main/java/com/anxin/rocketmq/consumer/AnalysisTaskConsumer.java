@@ -12,10 +12,9 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 
 /**
- * 分析任务消费者（状态机核心，线程池版与 RocketMQ 版共用同一处理逻辑）。
- * <p>
+ * 分析任务消费者（状态机核心，线程池版与 RocketMQ 版共用同一处理逻辑）
  * 幂等策略：条件更新抢占 PENDING → PROCESSING，抢占失败说明已被其它线程/实例处理，直接返回；
- * 状态只允许 PENDING → PROCESSING → SUCCESS/FAILED 单向流转，重试时置回 PENDING。
+ * 状态只允许 PENDING → PROCESSING → SUCCESS/FAILED 单向流转，重试时置回 PENDING
  */
 @Slf4j
 @Service

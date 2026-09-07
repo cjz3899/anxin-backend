@@ -22,10 +22,19 @@ public class RiskResult implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    /**
+     * 分析任务id，逻辑关联analysis_task.id
+     */
     private Long taskId;
 
+    /**
+     * 文档id，逻辑关联document.id
+     */
     private Long documentId;
 
+    /**
+     * 整体风险摘要
+     */
     private String riskSummary;
 
     private Integer highCount;

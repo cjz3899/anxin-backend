@@ -34,8 +34,6 @@ public class Document implements Serializable {
 
     private Integer status;
 
-    private String summary;
-
     private LocalDateTime createdTime;
 
     private LocalDateTime updatedTime;
