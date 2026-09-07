@@ -59,6 +59,12 @@
 
         <dependency>
             <groupId>com.anxin</groupId>
+            <artifactId>anxin-ai-llm</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.anxin</groupId>
             <artifactId>anxin-document-parser</artifactId>
             <version>${revision}</version>
         </dependency>

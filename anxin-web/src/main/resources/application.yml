@@ -43,6 +43,16 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
+  # Spring AI 配置
+  ai:
+    openai:
+      api-key: ${anxin.ai.openai.api-key}
+      base-url: ${anxin.ai.openai.base-url}
+      chat:
+        options:
+          model: ${anxin.ai.openai.model}
+          temperature: 0.3
+
 # RocketMQ 配置
 rocketmq:
   name-server: ${anxin.mq.name-server}
