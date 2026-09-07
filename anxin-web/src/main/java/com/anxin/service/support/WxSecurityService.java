@@ -7,15 +7,16 @@ import com.anxin.enums.ResultCode;
 import com.anxin.exception.ServiceException;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 微信内容安全服务
@@ -76,29 +77,47 @@ public class WxSecurityService {
 
     /**
      * 执行一次 imgSecCheck 请求，返回微信的 errcode。
+     * multipart 请求体手工拼装为字节数组并显式携带 Content-Length：
+     * 微信网关不接受 Transfer-Encoding: chunked（返回 412），
+     * 而 Spring 的 multipart 流式编码无法预知长度，会退化为 chunked。
      */
     private int doCheckImage(byte[] imageBytes, String accessToken) {
+        String boundary = "----AnxinSecBoundary" + System.nanoTime();
+        byte[] body = buildMultipartBody(imageBytes, boundary);
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        // ByteArrayResource 必须重写 getFilename()，否则 multipart 编码时抛 “No filename available”
-        ByteArrayResource media = new ByteArrayResource(imageBytes) {
-            @Override
-            public String getFilename() {
-                return "image.jpg";
-            }
-        };
-        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-        form.add("media", media);
+        headers.setContentType(MediaType.parseMediaType("multipart/form-data; boundary=" + boundary));
+        headers.setContentLength(body.length);
         String resp;
         try {
             String url = wechatProperties.imgSecCheckUrl() + "?access_token=" + accessToken;
-            resp = restTemplate.postForObject(url, new HttpEntity<>(form, headers), String.class);
+            resp = restTemplate.postForObject(url, new HttpEntity<>(body, headers), String.class);
         } catch (RestClientException e) {
             log.error("imgSecCheck 请求失败 url : {}", wechatProperties.imgSecCheckUrl(), e);
             throw new ServiceException(ResultCode.WECHAT_SECURITY_ERROR);
         }
         JSONObject json = JSONUtil.parseObj(resp);
         return json.getInt("errcode", ERR_OK);
+    }
+
+    /**
+     * 组装 imgSecCheck 要求的 multipart 表单体（字段名 media，文件名 image.jpg）
+     */
+    private byte[] buildMultipartBody(byte[] imageBytes, String boundary) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        String head = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"media\"; filename=\"image.jpg\"\r\n"
+                + "Content-Type: application/octet-stream\r\n"
+                + "Content-Length: " + imageBytes.length + "\r\n\r\n";
+        byte[] headBytes;
+        try {
+            headBytes = head.getBytes(StandardCharsets.UTF_8);
+            out.write(headBytes);
+            out.write(imageBytes);
+            out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new ServiceException(ResultCode.WECHAT_SECURITY_ERROR);
+        }
+        return out.toByteArray();
     }
 
     /**

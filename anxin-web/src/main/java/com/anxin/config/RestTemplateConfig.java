@@ -19,6 +19,8 @@ public class RestTemplateConfig {
         factory.setConnectTimeout(5000);
         //设置读取超时
         factory.setReadTimeout(15000);
+        //缓冲请求体以携带 Content-Length：微信 imgSecCheck 等网关接口不接受 chunked 传输编码(返回 412)
+        factory.setBufferRequestBody(true);
         return new RestTemplate(factory);
     }
 }

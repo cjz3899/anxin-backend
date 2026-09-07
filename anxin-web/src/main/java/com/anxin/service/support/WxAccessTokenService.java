@@ -17,10 +17,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.time.Duration;
 
 /**
- * 微信 access_token 服务。
- * <p>
- * access_token 全局唯一：同一 appid 同一时刻只有一个有效 token，重新获取会使旧 token 约 5 分钟内失效。
- * 因此使用 Redis 缓存（TTL 略短于 expires_in，自动提前过期触发刷新），多实例部署不会互相顶掉 token。
+ * 微信 access_token 服务
+ * access_token 全局唯一：同一 appid 同一时刻只有一个有效 token，重新获取会使旧 token 约 5 分钟内失效
+ * 因此使用 Redis 缓存（TTL 略短于 expires_in，自动提前过期触发刷新），多实例部署不会互相顶掉 token
  */
 @Slf4j
 @Service
@@ -56,7 +55,7 @@ public class WxAccessTokenService {
             return cached;
         }
         String url = UriComponentsBuilder.fromUriString(wechatProperties.tokenUrl())
-                .queryParam("grant_type", wechatProperties.grantType())
+                .queryParam("grant_type", wechatProperties.tokenGrantType())
                 .queryParam("appid", wechatProperties.appid())
                 .queryParam("secret", wechatProperties.secret())
                 .build()

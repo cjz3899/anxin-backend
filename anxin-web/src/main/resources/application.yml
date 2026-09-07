@@ -70,20 +70,6 @@ mybatis-plus:
     aggressive-lazy-loading: false
 
 
-# 微信小程序配置 - 【预留】后期拿到 appid/secret 后填写真实值
-wechat:
-  appid: "wxfecc26a8ec2ed78e"                 # 小程序 AppID（后期填）
-  secret: ""  # 小程序 AppSecret（后期填）
-  grant-type: authorization_code
-  # 获取 session_key 和 openid
-  jscode2session-url: https://api.weixin.qq.com/sns/jscode2session
-  # 获取 access_token
-  token-url: https://api.weixin.qq.com/cgi-bin/token
-  # 图片安全检测
-  img-sec-check-url: https://api.weixin.qq.com/wxa/img_sec_check
-  # 媒体文件异步检测
-  media-check-async-url: https://api.weixin.qq.com/wxa/media_check_async
-
 # JWT 配置（本地开发占位；生产用 application-prod.yml 的环境变量注入）
 anxin:
   jwt:
@@ -93,9 +79,24 @@ anxin:
     refresh-expiration: 604800000  # 7天（毫秒）
   # 阿里云 OSS 配置（AK/SK 通过环境变量注入，禁止写死提交 git）
   oss:
-    endpoint: ${OSS_ENDPOINT:oss-cn-hangzhou.aliyuncs.com}  # 不带协议
+    endpoint: ${OSS_ENDPOINT:}  # 不带协议
     access-key-id: ${OSS_ACCESS_KEY_ID:}
     access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
     bucket: ${OSS_BUCKET:}
     public-domain: ${OSS_PUBLIC_DOMAIN:}  # 可选自定义域名；为空则自动拼 https://{bucket}.{endpoint}/
+  # 微信小程序配置（appid/secret 通过环境变量注入）
+  wechat:
+    appid: ${WECHAT_APPID:}
+    secret: ${WECHAT_SECRET:}
+    grant-type: authorization_code
+    # 获取 access_token 时使用的固定授权类型（与登录换取 openid 的 grant-type 不同）
+    token-grant-type: client_credential
+    # 获取 session_key 和 openid
+    jscode2session-url: https://api.weixin.qq.com/sns/jscode2session
+    # 获取 access_token
+    token-url: https://api.weixin.qq.com/cgi-bin/token
+    # 图片安全检测
+    img-sec-check-url: https://api.weixin.qq.com/wxa/img_sec_check
+    # 媒体文件异步检测
+    media-check-async-url: https://api.weixin.qq.com/wxa/media_check_async
 

@@ -5,11 +5,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 微信小程序配置（对应 yml 中 wechat 前缀）。
  */
-@ConfigurationProperties(prefix = "wechat")
+@ConfigurationProperties(prefix = "anxin.wechat")
 public record WechatProperties(
         String appid,
         String secret,
         String grantType,
+        String tokenGrantType,
         String jscode2sessionUrl,
         String tokenUrl,
         String imgSecCheckUrl,
