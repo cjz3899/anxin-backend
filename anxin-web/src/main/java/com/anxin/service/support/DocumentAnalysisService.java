@@ -5,10 +5,13 @@ import com.anxin.entity.DocumentSection;
 import com.anxin.entity.RiskDetail;
 import com.anxin.entity.RiskResult;
 import com.anxin.enums.TaskStatus;
+import com.anxin.exception.NonRetryableTaskException;
 import com.anxin.mapper.DocumentMapper;
 import com.anxin.mapper.DocumentSectionMapper;
 import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
+import com.anxin.parser.DocumentParser;
+import com.anxin.parser.model.ParsedSection;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -16,6 +19,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -44,6 +48,9 @@ public class DocumentAnalysisService {
     @Resource
     private DocumentSectionMapper documentSectionMapper;
 
+    @Resource
+    private DocumentParser documentParser;
+
     public void analysis(AnalysisTaskMessage analysisTaskMessage) {
         byte[] bytes = ossStorageService.download(analysisTaskMessage.getFileUrl());
         //微信异步审核提交
@@ -57,8 +64,11 @@ public class DocumentAnalysisService {
         //重试幂等，清掉上次执行可能残留的半截数据
         clearExisting(analysisTaskMessage);
 
-        // TODO 继续
-
+        List<ParsedSection> sections = documentParser.parse(new ByteArrayInputStream(bytes), analysisTaskMessage.getFileType());
+        if (sections.isEmpty()) {
+            //文件解析不出来，重试无意义，直接终止并提示用户上传有效文件
+            throw new NonRetryableTaskException("未解析到有效条款内容，请重新上传");
+        }
     }
 
     private void clearExisting(AnalysisTaskMessage analysisTaskMessage) {
