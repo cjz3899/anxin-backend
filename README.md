@@ -29,8 +29,8 @@
 
 ```
 headers: {
-    'Authorization': 
-    'accessToken':
+    'Authorization':
+    wx.getStorageSync('accessToken')
   }
 ```
 
