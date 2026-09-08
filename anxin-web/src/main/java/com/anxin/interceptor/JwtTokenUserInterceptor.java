@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 public class JwtTokenUserInterceptor implements HandlerInterceptor {
 
-    private static final String TOKEN_NAME = "token";
+    private static final String TOKEN_NAME = "Authorization";
 
     @Resource
     private TokenService tokenService;
