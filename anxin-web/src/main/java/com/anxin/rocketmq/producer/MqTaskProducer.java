@@ -5,6 +5,7 @@ import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
  */
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "anxin.mq.enabled", havingValue = "true")
 public class MqTaskProducer implements TaskProducer {
     private static final String TASK_MQ_DESTINATION = "anxin-analysis:task";
 

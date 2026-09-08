@@ -72,6 +72,11 @@ mybatis-plus:
 
 # JWT 配置（本地开发占位；生产用 application-prod.yml 的环境变量注入）
 anxin:
+  mq:
+    enabled: false
+    name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
+    producer-group: anxin-producer-group
+    default-topic: anxin-analysis
   jwt:
     access-secret: anxin-dev-access-secret-key-for-local-dev-only-2026
     refresh-secret: anxin-dev-refresh-secret-key-for-local-dev-only-2026
@@ -84,9 +89,9 @@ anxin:
     access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
     bucket: ${OSS_BUCKET:}
     public-domain: ${OSS_PUBLIC_DOMAIN:}  # 可选自定义域名；为空则自动拼 https://{bucket}.{endpoint}/
-  # 微信小程序配置（appid/secret 通过环境变量注入）
+  # 微信小程序配置：appid 可作为项目默认值提交，secret 仍通过环境变量注入
   wechat:
-    appid: ${WECHAT_APPID:}
+    appid: ${WECHAT_APPID:wxfecc26a8ec2ed78e}
     secret: ${WECHAT_SECRET:}
     grant-type: authorization_code
     # 获取 access_token 时使用的固定授权类型（与登录换取 openid 的 grant-type 不同）

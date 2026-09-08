@@ -19,6 +19,7 @@ anxin:
     access-expiration: ${JWT_ACCESS_EXPIRATION:7200000}
     refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
   mq:
+    enabled: true
     name-server: ${ROCKETMQ_NAME_SERVER}
     producer-group: anxin-producer-group
     default-topic: anxin-topic

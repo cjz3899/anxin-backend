@@ -48,6 +48,7 @@ public class HttpClient {
             URI uri = builder.build();
 
             HttpGet httpGet = new HttpGet(uri);
+            httpGet.setConfig(builderRequestConfig());
             response = httpClient.execute(httpGet);
 
             if (response.getStatusLine().getStatusCode() == 200) {
