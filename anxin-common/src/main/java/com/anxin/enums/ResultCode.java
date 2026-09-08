@@ -25,7 +25,13 @@ public enum ResultCode {
 
     WECHAT_SECURITY_ERROR(10009, "内容安全校验失败，请稍后重试"),
 
-    FILE_SAVE_FAILED(10010, "文件保存失败");
+    FILE_SAVE_FAILED(10010, "文件保存失败"),
+
+    FILE_DOWNLOAD_FAILED(10011, "文件下载失败，请检查文件是否存在或权限配置"),
+
+    FILE_DOWNLOAD_IO_ERROR(10012, "文件下载IO异常，请检查网络或磁盘后重试"),
+
+    FILE_DOWNLOAD_INTERRUPTED(10013, "下载被中断");
 
     private final Integer code;
 

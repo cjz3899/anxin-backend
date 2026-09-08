@@ -12,6 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
@@ -31,6 +37,10 @@ public class OssStorageService {
 
     @Resource
     private OssProperties ossProperties;
+
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
     /**
      * 上传文件到 OSS（bucket 公共读）。
@@ -54,6 +64,27 @@ public class OssStorageService {
             throw new ServiceException(ResultCode.FILE_SAVE_FAILED);
         }
         return key;
+    }
+
+    /**
+     * 从OSS中下载
+     */
+    public byte[] download(String fileUrl) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(fileUrl)).GET().build();
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() != 200) {
+                log.error("OSS 文件下载失败 url : {}，http 状态码 : {}", fileUrl, response.statusCode());
+                throw new ServiceException(ResultCode.FILE_DOWNLOAD_FAILED);
+            }
+            return response.body();
+        } catch (IOException e) {
+            log.error("OSS 文件下载异常 url : {}", fileUrl, e);
+            throw new ServiceException(ResultCode.FILE_DOWNLOAD_IO_ERROR);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ServiceException(ResultCode.FILE_DOWNLOAD_INTERRUPTED);
+        }
     }
 
     /**
