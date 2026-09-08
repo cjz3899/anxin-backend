@@ -2,8 +2,10 @@ package com.anxin.rocketmq.consumer;
 
 import com.anxin.entity.AnalysisTask;
 import com.anxin.enums.TaskStatus;
+import com.anxin.exception.NonRetryableTaskException;
 import com.anxin.mapper.AnalysisTaskMapper;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
+import com.anxin.service.support.DocumentAnalysisService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,9 @@ public class AnalysisTaskConsumer {
     @Resource
     private AnalysisTaskMapper analysisTaskMapper;
 
+    @Resource
+    private DocumentAnalysisService documentAnalysisService;
+
     public void process(AnalysisTaskMessage message) {
         int rows = analysisTaskMapper.update(null, new LambdaUpdateWrapper<AnalysisTask>()
                 .eq(AnalysisTask::getId, message.getTaskId())
@@ -36,12 +41,10 @@ public class AnalysisTaskConsumer {
             return;
         }
         try {
-            // TODO 异步审核与分析骨架：
-            // 1) 按 message.getFileUrl() 从 OSS 拉取文件内容；
-            // 2) 文档/超4MB图片提交微信异步审核（mediaCheckAsync，当前 mock 放行）；
-            // 3) document-parser 解析拆 document_section → AI 分析写 risk_result。
-            // 练习阶段直接置成功，客户端按任务状态轮询。
+            documentAnalysisService.analysis(message);
             markFinished(message.getTaskId(), TaskStatus.SUCCESS, null);
+        } catch (NonRetryableTaskException e) {
+            log.warn("任务不可重复处理 taskId : {}", message.getTaskId());
         } catch (Exception e) {
             log.error("任务处理失败 taskId : {}", message.getTaskId(), e);
             AnalysisTask task = analysisTaskMapper.selectById(message.getTaskId());
@@ -49,6 +52,7 @@ public class AnalysisTaskConsumer {
             if (retry > MAX_RETRY) {
                 String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 markFinished(message.getTaskId(), TaskStatus.FAILED, truncate(reason, 2000));
+                markDocumentFailed(message.getDocumentId());
             } else {
                 analysisTaskMapper.update(null, new LambdaUpdateWrapper<AnalysisTask>()
                         .eq(AnalysisTask::getId, message.getTaskId())
@@ -57,6 +61,10 @@ public class AnalysisTaskConsumer {
                 log.warn("任务将重试 taskId : {}, retry : {}", message.getTaskId(), retry);
             }
         }
+    }
+
+    private void markDocumentFailed(Long documentId) {
+
     }
 
     private void markFinished(Long taskId, TaskStatus status, String errorMessage) {
