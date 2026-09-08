@@ -25,6 +25,15 @@
 刷新成功后，服务端会重新签发一对 Token，并覆盖 Redis 中该用户原有的 Token。客户端必须同时保存并替换新的 `accessToken` 和
 `refreshToken`。
 
+请求头格式:
+
+```
+headers: {
+    'Authorization': 
+    'accessToken':
+  }
+```
+
 ### 1.3 统一响应结构
 
 成功响应：
