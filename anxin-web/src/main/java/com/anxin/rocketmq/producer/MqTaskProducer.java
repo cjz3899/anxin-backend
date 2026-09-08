@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class MqTaskProducer implements TaskProducer {
-    private static final String TASK_MQ_DESTINATION = "anxin-analysis:topic";
+    private static final String TASK_MQ_DESTINATION = "anxin-analysis:task";
 
     @Resource
     private RocketMQTemplate rocketMQTemplate;
@@ -29,7 +29,6 @@ public class MqTaskProducer implements TaskProducer {
          * 而同步阻塞的是业务逻辑和MQ服务器之间的网络io
          * 如果异步发送会怎样 1.消息假发送成功 2.内存溢出
          */
-        // TODO 写博客
         rocketMQTemplate.syncSend(TASK_MQ_DESTINATION, JSONUtil.toJsonStr(message));
     }
 }
