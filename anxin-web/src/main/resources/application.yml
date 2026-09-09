@@ -97,4 +97,14 @@ anxin:
     token-url: https://api.weixin.qq.com/cgi-bin/token
     # 图片安全检测
     img-sec-check-url: https://api.weixin.qq.com/wxa/img_sec_check
-
+  # OCR 配置
+  ocr:
+    # 检测模型路径
+    det-model-path: classpath:models/det/inference.onnx
+    # 识别模型路径
+    rec-model-path: classpath:models/rec/inference.onnx
+    char-dict-path: classpath:models/rec/ppocrv6_dict.txt
+    det-threshold: 0.3
+    det-box-unclip-ratio: 1.5
+    rec-image-height: 48
+    rec-image-max-width: 320
