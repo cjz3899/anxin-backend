@@ -50,3 +50,6 @@ anxin-web/src/main/resources/application-dev.yml
 
 ### Mac OS ###
 .DS_Store
+
+# 本地缓存
+.omo/

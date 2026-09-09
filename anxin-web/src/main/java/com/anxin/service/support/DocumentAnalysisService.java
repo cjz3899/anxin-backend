@@ -13,6 +13,7 @@ import com.anxin.mapper.DocumentMapper;
 import com.anxin.mapper.DocumentSectionMapper;
 import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
+import com.anxin.ocr.service.OcrService;
 import com.anxin.parser.DocumentParser;
 import com.anxin.parser.model.ParsedSection;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
@@ -56,10 +57,14 @@ public class DocumentAnalysisService {
     @Resource
     private RiskAnalyzer riskAnalyzer;
 
+    @Resource
+    private OcrService ocrService;
+
     public void analysis(AnalysisTaskMessage analysisTaskMessage) {
         byte[] bytes = ossStorageService.download(analysisTaskMessage.getFileUrl());
-        // TODO 引入OCR解析图片
+        //  引入OCR解析图片
         if ("IMAGE".equals(analysisTaskMessage.getFileType())) {
+            String fullText = ocrService.recognize(bytes, "image/jpeg");
             markDocumentSuccess(analysisTaskMessage.getDocumentId());
             return;
         }
