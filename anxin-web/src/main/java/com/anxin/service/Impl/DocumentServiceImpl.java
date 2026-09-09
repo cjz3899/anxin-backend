@@ -13,7 +13,6 @@ import com.anxin.rocketmq.producer.TaskProducer;
 import com.anxin.service.IDocumentService;
 import com.anxin.service.support.FileTypeService;
 import com.anxin.service.support.OssStorageService;
-import com.anxin.service.support.WxSecurityService;
 import com.anxin.threadlocal.BaseContext;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -49,9 +48,6 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
 
     @Resource
     private OssStorageService ossStorageService;
-
-    @Resource
-    private WxSecurityService wxSecurityService;
 
     @Resource
     private AnalysisTaskMapper analysisTaskMapper;
@@ -95,20 +91,8 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         }
 
         //按真实类型复核大小上限（图片5MB，文档10MB）
-        if (fileTypeService.isImage(mime)) {
-            if (size > UploadConstant.IMAGE_MAX_BYTES) {
-                throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "图片大小不能超过5MB");
-            }
-            if (size <= UploadConstant.SYNC_CHECK_MAX_BYTES) {
-                // 图片 ≤4MB：同步 imgSecCheck，违规（87014）在此抛 10008，文件不会进入 OSS
-                wxSecurityService.checkImage(bytes);
-            } else {
-                // 图片 >4MB：走异步审核（当前为骨架 mock 放行，见 AnalysisTaskConsumer TODO）
-                log.warn("图片超过4MB，异步审核暂为骨架，直接放行 size : {}", size);
-            }
-        } else {
-            // PDF/Word：异步审核（骨架 mock 放行）
-            log.warn("文档类文件异步审核暂为骨架，直接放行 mime : {}", mime);
+        if (fileTypeService.isImage(mime) && size > UploadConstant.IMAGE_MAX_BYTES) {
+            throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "图片大小不能超过5MB");
         }
 
         //存储：UUID + Tika 真实后缀，路径不拼接用户文件名

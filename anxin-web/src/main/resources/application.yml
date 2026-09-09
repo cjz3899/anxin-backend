@@ -97,6 +97,4 @@ anxin:
     token-url: https://api.weixin.qq.com/cgi-bin/token
     # 图片安全检测
     img-sec-check-url: https://api.weixin.qq.com/wxa/img_sec_check
-    # 媒体文件异步检测
-    media-check-async-url: https://api.weixin.qq.com/wxa/media_check_async
 

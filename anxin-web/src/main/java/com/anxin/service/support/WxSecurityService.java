@@ -119,20 +119,4 @@ public class WxSecurityService {
         }
         return out.toByteArray();
     }
-
-    /**
-     * 文档 / 超 4MB 图片的微信异步审核提交
-     *
-     * @param fileBytes  文件二进制内容
-     * @param mime       文件真实 MIME（当前仅用于日志，后续提交素材时使用）
-     * @param documentId 关联的文件 ID（仅用于日志/回调关联）
-     */
-    public void checkMediaAsync(byte[] fileBytes, String mime, Long documentId) {
-        //TODO 骨架：当前 mock 放行（仅记日志），接入真实流程需要：
-        // 将文件上传为微信临时素材或提供公网可访问的 media_url；
-        // 调用 media_check_async 提交，微信通过回调（需公网回调地址）通知结果
-        // 回调中若违规，将 document / analysis_task 置为失败并删除 OSS 文件
-        log.warn("checkMediaAsync 暂为骨架（mock 放行），documentId : {}, mime : {}, size : {}",
-                documentId, mime, fileBytes.length);
-    }
 }

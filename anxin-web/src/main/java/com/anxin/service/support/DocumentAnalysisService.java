@@ -39,9 +39,6 @@ public class DocumentAnalysisService {
     private OssStorageService ossStorageService;
 
     @Resource
-    private WxSecurityService wxSecurityService;
-
-    @Resource
     private DocumentMapper documentMapper;
 
     @Resource
@@ -61,8 +58,6 @@ public class DocumentAnalysisService {
 
     public void analysis(AnalysisTaskMessage analysisTaskMessage) {
         byte[] bytes = ossStorageService.download(analysisTaskMessage.getFileUrl());
-        //微信异步审核提交
-        wxSecurityService.checkMediaAsync(bytes, analysisTaskMessage.getFileType(), analysisTaskMessage.getDocumentId());
         // TODO 引入OCR解析图片
         if ("IMAGE".equals(analysisTaskMessage.getFileType())) {
             markDocumentSuccess(analysisTaskMessage.getDocumentId());
@@ -82,7 +77,7 @@ public class DocumentAnalysisService {
 
         RiskAnalysisResult result = riskAnalyzer.analyze(sections);
         saveRiskResult(analysisTaskMessage, result, sectionIdByNo);
-
+        markDocumentSuccess(analysisTaskMessage.getDocumentId());
     }
 
     private void saveRiskResult(AnalysisTaskMessage analysisTaskMessage, RiskAnalysisResult result, Map<String, Long> sectionIdByNo) {

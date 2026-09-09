@@ -1,9 +1,11 @@
 package com.anxin.rocketmq.consumer;
 
 import com.anxin.entity.AnalysisTask;
+import com.anxin.entity.Document;
 import com.anxin.enums.TaskStatus;
 import com.anxin.exception.NonRetryableTaskException;
 import com.anxin.mapper.AnalysisTaskMapper;
+import com.anxin.mapper.DocumentMapper;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.anxin.service.support.DocumentAnalysisService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -30,6 +32,9 @@ public class AnalysisTaskConsumer {
     @Resource
     private DocumentAnalysisService documentAnalysisService;
 
+    @Resource
+    private DocumentMapper documentMapper;
+
     public void process(AnalysisTaskMessage message) {
         int rows = analysisTaskMapper.update(null, new LambdaUpdateWrapper<AnalysisTask>()
                 .eq(AnalysisTask::getId, message.getTaskId())
@@ -44,7 +49,9 @@ public class AnalysisTaskConsumer {
             documentAnalysisService.analysis(message);
             markFinished(message.getTaskId(), TaskStatus.SUCCESS, null);
         } catch (NonRetryableTaskException e) {
-            log.warn("任务不可重复处理 taskId : {}", message.getTaskId());
+            log.warn("任务不可重试 taskId : {}，reason : {}", message.getTaskId(), e.getMessage());
+            markFinished(message.getTaskId(), TaskStatus.FAILED, e.getMessage());
+            markDocumentFailed(message.getDocumentId());
         } catch (Exception e) {
             log.error("任务处理失败 taskId : {}", message.getTaskId(), e);
             AnalysisTask task = analysisTaskMapper.selectById(message.getTaskId());
@@ -64,7 +71,10 @@ public class AnalysisTaskConsumer {
     }
 
     private void markDocumentFailed(Long documentId) {
-
+        documentMapper.update(null, new LambdaUpdateWrapper<Document>()
+                .eq(Document::getId, documentId)
+                .set(Document::getStatus, TaskStatus.FAILED.getCode())
+                .set(Document::getUpdatedTime, LocalDateTime.now()));
     }
 
     private void markFinished(Long taskId, TaskStatus status, String errorMessage) {

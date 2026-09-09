@@ -13,6 +13,5 @@ public record WechatProperties(
         String tokenGrantType,
         String jscode2sessionUrl,
         String tokenUrl,
-        String imgSecCheckUrl,
-        String mediaCheckAsyncUrl) {
+        String imgSecCheckUrl) {
 }
