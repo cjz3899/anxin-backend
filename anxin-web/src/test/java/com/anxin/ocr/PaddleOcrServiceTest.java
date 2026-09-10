@@ -1,16 +1,16 @@
 package com.anxin.ocr;
 
 import com.anxin.ocr.service.OcrService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import jakarta.annotation.Resource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @Slf4j
 @SpringBootTest
@@ -21,7 +21,7 @@ class PaddleOcrServiceTest {
 
     @Test
     void recognizeImage() throws IOException {
-        String imagePath = "D:\\JavaCode\\anxin-backend\\anxin-web\\src\\test\\java\\com\\anxin\\ocr\\testdocument\\test1.png";
+        String imagePath = "/Users/caijunzhe/Desktop/anxin/anxin-web/src/test/java/com/anxin/ocr/testdocument/test1.png";
 
         log.info("测试图片路径: {}", imagePath);
         byte[] imageBytes = Files.readAllBytes(Paths.get(imagePath));

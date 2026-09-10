@@ -31,7 +31,14 @@ public enum ResultCode {
 
     FILE_DOWNLOAD_IO_ERROR(10012, "文件下载IO异常，请检查网络或磁盘后重试"),
 
-    FILE_DOWNLOAD_INTERRUPTED(10013, "下载被中断");
+    FILE_DOWNLOAD_INTERRUPTED(10013, "下载被中断"),
+
+    ANALYSIS_TASK_NOT_FOUND(10014, "分析任务不存在"),
+
+    ANALYSIS_NOT_COMPLETED(10015, "分析尚未完成，请先轮询任务状态"),
+
+    ANALYSIS_RESULT_MISSING(10016, "分析结果缺失");
+
 
     private final Integer code;
 

@@ -3,7 +3,7 @@ package com.anxin.enums;
 import lombok.Getter;
 
 /**
- * 分析任务状态（对应 analysis_task.status 的 TINYINT 0~3）。
+ * 分析任务状态（对应 analysis_task.status 的 TINYINT 0~3）
  */
 @Getter
 public enum TaskStatus {
