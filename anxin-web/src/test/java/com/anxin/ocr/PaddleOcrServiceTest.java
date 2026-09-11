@@ -29,7 +29,6 @@ class PaddleOcrServiceTest {
 
         log.info("开始调用 OCR 识别...");
         String result = ocrService.recognize(imageBytes, "image/png");
-        log.info("OCR 识别结果: {}", result);
 
         System.out.println("=== OCR 识别结果 ===");
         System.out.println(result);

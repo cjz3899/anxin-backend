@@ -1,3 +1,26 @@
+## 0. 项目概览
+
+安心（anxin）是一个面向小程序的法律文档 AI 风险分析服务：用户上传合同/协议文档，系统异步完成解析拆节、LLM 风险分析并产出风险报告。
+
+### 模块结构
+
+| 模块 | 说明 |
+|------|------|
+| `anxin-common` | 公共组件：统一响应 `Result`、错误码、JWT 工具、异常、ThreadLocal 上下文 |
+| `anxin-ai` | LLM 能力：`RiskAnalyzer`/`LlmRiskAnalyzer`（Spring AI ChatClient）风险分析 |
+| `anxin-document/anxin-document-parser` | 文档解析：Tika 抽取全文 + 条款切分（`TikaDocumentParser`、`SectionSplitter`） |
+| `anxin-document/anxin-document-ocr` | OCR：PaddleOCR 本地 ONNX 推理（`OcrService`/`PaddleOcrService`） |
+| `anxin-rag/anxin-rag-core`、`anxin-rag-vector` | RAG 预留模块（暂为空壳，问答规划见 §5.3） |
+| `anxin-web` | 唯一启动模块：Controller / Service / Mapper / RocketMQ 消息层 |
+
+### 技术栈
+
+Java 17、Spring Boot 3.5.4、Spring AI 1.1.8（OpenAI 兼容接口）、RocketMQ 2.3.3、MyBatis-Plus 3.5.7、Apache Tika 3.2.2、PaddleOCR（ONNX Runtime 1.19.0）、阿里云 OSS、MySQL、Redis、jjwt 0.12.6、Hutool 5.8.40。
+
+### 本地运行依赖
+
+MySQL 8、Redis、RocketMQ（NameServer 9876 + Broker）、阿里云 OSS（bucket 需公共读）、微信小程序 appid/secret、OpenAI 兼容 LLM API（配置键 `anxin.ai.openai.*`）。
+
 ## 1. 接口约定
 
 ### 1.1 基础信息
@@ -27,11 +50,10 @@
 
 请求头格式:
 
-```
+```javascript
 headers: {
-    'Authorization':
-    wx.getStorageSync('accessToken')
-  }
+    token: wx.getStorageSync('accessToken')
+}
 ```
 
 ### 1.3 统一响应结构
@@ -80,6 +102,12 @@ headers: {
 | `10008` | `CONTENT_VIOLATION`       | 内容违规，请勿上传           |
 | `10009` | `WECHAT_SECURITY_ERROR`   | 内容安全校验失败，请稍后重试 |
 | `10010` | `FILE_SAVE_FAILED`        | 文件保存失败                 |
+| `10011` | `FILE_DOWNLOAD_FAILED`      | 文件下载失败，请检查文件是否存在或权限配置 |
+| `10012` | `FILE_DOWNLOAD_IO_ERROR`    | 文件下载IO异常，请检查网络或磁盘后重试     |
+| `10013` | `FILE_DOWNLOAD_INTERRUPTED` | 下载被中断                                 |
+| `10014` | `ANALYSIS_TASK_NOT_FOUND`   | 分析任务不存在                             |
+| `10015` | `ANALYSIS_NOT_COMPLETED`    | 分析尚未完成，请先轮询任务状态             |
+| `10016` | `ANALYSIS_RESULT_MISSING`   | 分析结果缺失                               |
 
 客户端应同时依据 HTTP 状态和响应中的 `code`、`msg` 处理异常。
 
@@ -142,6 +170,8 @@ POST /api/user/login
 | `/api/user/avatar`     | `POST` | 是       | 上传头像：校验后存 OSS，返回永久 URL（不落库） |
 | `/api/user/logout`     | `POST` | 是       | 删除当前用户在 Redis 中的登录 Token            |
 | `/api/document/upload` | `POST` | 是       | 上传 PDF/Word/图片并创建分析任务               |
+| `/api/analysis/task/{taskId}`       | `GET`  | 是       | 查询异步分析任务状态（客户端轮询）             |
+| `/api/analysis/report/{documentId}` | `GET`  | 是       | 查询文件风险报告                               |
 
 ### 3.1 微信小程序登录
 
@@ -429,7 +459,7 @@ wx.uploadFile({
 #### 内容安全
 
 - 图片 ≤4MB：imgSecCheck **同步**审核，违规（87014）返回 `10008`，文件不会进入 OSS/数据库；
-- 图片 >4MB 与 PDF/Word：走微信异步审核（mediaCheckAsync），当前为骨架（mock 放行），待接入回调。
+- 图片 >4MB 与 PDF/Word：当前不做上传链路内容审核（微信异步审核 mediaCheckAsync 已从代码中移除），如需覆盖需另行接入。
 
 #### 成功响应（已实现）
 
@@ -467,8 +497,126 @@ file=<二进制文件>
 
 #### 任务说明
 
-上传成功后 `analysis_task` 状态按 `PENDING → PROCESSING → SUCCESS/FAILED` 异步流转（当前处理器为骨架：创建后直接置
-`SUCCESS`，文档解析与 LLM 分析待接入）；任务状态查询接口见 §5.2。
+上传成功后异步链路立即投递 RocketMQ 消息（topic `anxin-analysis`，tag `task`），消费者完成：OSS 拉取文件 → 文档解析拆节（落
+`document_section`）→ LLM 风险分析 → 风险结果落库（`risk_result`/`risk_detail`）→ 任务与文件状态置 `SUCCESS`。
+
+- 状态机：`PENDING → PROCESSING → SUCCESS/FAILED` 单向流转，消费端按"条件更新抢占"保证幂等；
+- 可重试失败：`retry_count` +1 并置回 `PENDING`，由补偿调度器每 30 秒重投，超过 3 次置 `FAILED` 并写入 `error_message`；
+- 不可重试失败（如扫描件/空文档解析不出条款）：任务直接 `FAILED`，`error_message` 提示重新上传，客户端轮询可见；
+- 图片文件：当前走 OCR 识别后直接置 `SUCCESS`，暂不产出风险报告（接入中，见 docs/规划接口实现指南.md 阶段 C）；
+- 任务状态查询接口见 §3.7，风险报告见 §3.8。
+
+### 3.7 分析任务状态轮询
+
+#### 基本信息
+
+- 接口：`GET /api/analysis/task/{taskId}`
+- 鉴权：需要
+- 请求头：`token: <accessToken>`
+- 业务说明：客户端每 2 秒轮询一次，拿到 `SUCCESS` 或 `FAILED` 后停止轮询。
+
+请求示例：
+
+```http
+GET /api/analysis/task/20001 HTTP/1.1
+Host: localhost:8080
+token: eyJhbGciOiJIUzI1NiJ9...
+```
+
+成功响应：
+
+```json
+{
+  "code": 1,
+  "msg": "操作成功",
+  "data": {
+    "taskId": "20001",
+    "documentId": "10001",
+    "taskType": "RISK_ANALYSIS",
+    "status": "PROCESSING",
+    "retryCount": 0,
+    "errorMessage": null,
+    "startedTime": "2026-09-11 10:00:05",
+    "finishedTime": null
+  }
+}
+```
+
+| `data` 字段    | 类型                | 说明                                                                 |
+|----------------|---------------------|----------------------------------------------------------------------|
+| `taskId`       | `String`            | 任务 ID                                                              |
+| `documentId`   | `String`            | 文件 ID                                                              |
+| `taskType`     | `String`            | 任务类型，当前固定 `RISK_ANALYSIS`                                   |
+| `status`       | `String`            | `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`（见 §6.2）           |
+| `retryCount`   | `Integer`           | 已重试次数                                                           |
+| `errorMessage` | `String` 或 `null`  | 失败原因，`FAILED` 时有值（如"未解析到有效条款内容，请重新上传"）    |
+| `startedTime`  | `String` 或 `null`  | 开始时间，格式 `yyyy-MM-dd HH:mm:ss`                                 |
+| `finishedTime` | `String` 或 `null`  | 完成时间                                                             |
+
+失败场景：任务不存在返回 `10014 分析任务不存在`。
+
+### 3.8 风险报告
+
+#### 基本信息
+
+- 接口：`GET /api/analysis/report/{documentId}`
+- 鉴权：需要
+- 请求头：`token: <accessToken>`
+- 业务说明：分析任务 `SUCCESS` 后调用，返回整体摘要、风险计数与风险明细（明细含原文引用，供前端溯源）。
+
+请求示例：
+
+```http
+GET /api/analysis/report/10001 HTTP/1.1
+Host: localhost:8080
+token: eyJhbGciOiJIUzI1NiJ9...
+```
+
+成功响应：
+
+```json
+{
+  "code": 1,
+  "msg": "操作成功",
+  "data": {
+    "documentId": "10001",
+    "taskId": "20001",
+    "fileName": "租赁合同.pdf",
+    "fileType": "PDF",
+    "fileSize": 204800,
+    "startedTime": "2026-09-11 10:00:05",
+    "finishedTime": "2026-09-11 10:00:42",
+    "riskSummary": "文件存在较高风险条款，建议重点核查违约责任和免责条款。",
+    "highCount": 1,
+    "mediumCount": 2,
+    "lowCount": 0,
+    "risks": [
+      {
+        "id": "30001",
+        "sectionId": "40001",
+        "riskType": "违约责任",
+        "riskLevel": "HIGH",
+        "title": "提前解约责任过重",
+        "originalText": "乙方提前解除合同，应支付剩余租期全部租金……",
+        "reason": "该条款可能导致用户在提前解除合同时承担较高经济责任。",
+        "impact": "可能增加提前解约成本。",
+        "suggestion": "重点确认提前解除条件及违约责任。"
+      }
+    ]
+  }
+}
+```
+
+| `data` 字段                                  | 类型              | 说明                                     |
+|----------------------------------------------|-------------------|------------------------------------------|
+| `documentId` / `taskId`                      | `String`          | 文件 / 任务 ID                           |
+| `fileName` / `fileType` / `fileSize`         | `String`/`Integer`| 文件基本信息                             |
+| `startedTime` / `finishedTime`               | `String`          | 分析起止时间                             |
+| `riskSummary`                                | `String`          | 整体风险摘要                             |
+| `highCount` / `mediumCount` / `lowCount`     | `Integer`         | 高/中/低风险数量                         |
+| `risks`                                      | `Array`           | 风险明细，`riskLevel` 口径见 §6.3        |
+
+失败场景：任务不存在 `10014`；分析尚未完成 `10015`；结果缺失 `10016`。
 
 ## 4. 小程序调用示例
 
@@ -517,8 +665,7 @@ wx.request({
 
 ## 5. 规划中接口
 
-以下接口按照需求文档中的“文件管理、分析任务、风险报告、RAG 问答和历史记录”整理。文件上传与分析任务创建已实现（见
-§3.6），其余接口尚未实现对应 Controller。路径和字段可在开发时继续确认，但建议沿用本文档的统一响应结构和 Token 鉴权方式。
+以下接口按照需求文档中的“文件管理、风险报告、RAG 问答和历史记录”整理。分析任务轮询与风险报告已实现并移入 §3.7、§3.8；单条风险详情、文件管理与 RAG 问答尚未实现对应 Controller。路径和字段可在开发时继续确认，但建议沿用本文档的统一响应结构和 Token 鉴权方式。
 
 ### 5.1 文件管理
 
@@ -552,91 +699,36 @@ token: eyJhbGciOiJIUzI1NiJ9...
 | `createdTime` | `String` | 创建时间，格式 `yyyy-MM-dd HH:mm:ss` |
 | `updatedTime` | `String` | 更新时间                             |
 
-### 5.2 分析任务
-
-| 接口                          | 方法  | 鉴权 | 说明                 | 状态   |
-|-------------------------------|-------|------|----------------------|--------|
-| `/api/analysis/task/{taskId}` | `GET` | 是   | 查询异步分析任务状态 | 规划中 |
-
-建议响应：
-
-```json
-{
-  "code": 1,
-  "msg": "操作成功",
-  "data": {
-    "taskId": "20001",
-    "documentId": "10001",
-    "taskType": "RISK_ANALYSIS",
-    "status": "PROCESSING",
-    "retryCount": 0,
-    "errorMessage": null,
-    "startedTime": "2026-09-05 10:00:00",
-    "finishedTime": null
-  }
-}
-```
-
-任务状态建议统一为：
-
-| 状态         | 含义     |
-|--------------|----------|
-| `PENDING`    | 待处理   |
-| `PROCESSING` | 处理中   |
-| `SUCCESS`    | 分析成功 |
-| `FAILED`     | 分析失败 |
-
-分析采用异步处理：上传接口只负责完成文件校验、保存文件、创建任务和投递消息（已实现，任务状态机见 §6.2）。当前异步处理器为骨架，任务创建后直接置为
-`SUCCESS`；待接入文档解析与 LLM 分析后，客户端可根据任务状态轮询查询接口。
-
-### 5.3 风险报告
+### 5.2 风险报告-单条风险详情
 
 | 接口                                        | 方法  | 鉴权 | 说明             | 状态   |
 |---------------------------------------------|-------|------|------------------|--------|
-| `/api/document/{documentId}/report`         | `GET` | 是   | 查看文件风险报告 | 规划中 |
 | `/api/document/{documentId}/risks/{riskId}` | `GET` | 是   | 查看单条风险详情 | 规划中 |
 
-建议报告响应：
+报告列表已实现，见 §3.8（路径为 `/api/analysis/report/{documentId}`；规划中的风险评分 riskScore 为需求文档扩展项，本期未实现，后续可基于高/中/低风险数量加权计算）。单条风险详情建议在明细基础上补充条款溯源信息，响应示例：
 
 ```json
 {
   "code": 1,
   "msg": "操作成功",
   "data": {
+    "id": "30001",
     "documentId": "10001",
-    "taskId": "20001",
-    "riskScore": 78,
+    "sectionId": "40001",
+    "sectionNo": "第15条",
+    "sectionTitle": "违约责任",
+    "riskType": "违约责任",
     "riskLevel": "HIGH",
-    "riskSummary": "文件存在较高风险条款，建议重点核查违约责任和免责条款。",
-    "riskStatistics": {
-      "highCount": 3,
-      "mediumCount": 5,
-      "lowCount": 2
-    },
-    "risks": [
-      {
-        "id": "30001",
-        "sectionId": "40001",
-        "riskType": "违约责任",
-        "riskLevel": "HIGH",
-        "title": "提前解约责任过重",
-        "originalText": "乙方提前解除合同，应支付剩余租期全部租金……",
-        "reason": "该条款可能导致用户在提前解除合同时承担较高经济责任。",
-        "impact": "可能增加提前解约成本。",
-        "suggestion": "重点确认提前解除条件及违约责任。",
-        "pageNo": 6,
-        "startPosition": 120,
-        "endPosition": 145
-      }
-    ],
-    "overallSuggestion": "本报告仅作为 AI 辅助风险提示，不作为法律结论。"
+    "title": "提前解约责任过重",
+    "originalText": "乙方提前解除合同，应支付剩余租期全部租金……",
+    "reason": "该条款可能导致用户在提前解除合同时承担较高经济责任。",
+    "impact": "可能增加提前解约成本。",
+    "suggestion": "重点确认提前解除条件及违约责任。"
   }
 }
 ```
 
-风险评分建议按需求文档执行：`0～39` 为低风险，`40～69` 为中风险，`70～100` 为高风险。风险报告必须保留原文、原因、影响、建议以及页码/位置，供前端进行原文溯源和定位。
-
-### 5.4 RAG / Agent 智能问答
+### 5.3 RAG / Agent 智能问答（轻量 RAG）
 
 | 接口                                       | 方法     | 鉴权 | 说明                   | 状态   |
 |--------------------------------------------|----------|------|------------------------|--------|
@@ -693,6 +785,8 @@ token: eyJhbGciOiJIUzI1NiJ9...
 3. 找不到文件依据时明确说明，不应编造条款内容。
 4. 回答应使用“可能存在风险”等审慎表述，不输出确定性的法律结论。
 5. 应校验会话、文件和用户的归属关系，禁止跨用户访问。
+6. 实现约定（轻量 RAG）：检索直接使用当前文档已解析的条款（`document_section`，按 `sort` 排序）拼入模型上下文，并要求模型
+   返回引用的条款编号以映射回 `sectionId`；暂不引入向量检索。
 
 ## 6. 数据与状态约定
 
@@ -714,6 +808,8 @@ ID。
 
 > 注：自 0.1.3 起 `document.status` 与 `analysis_task.status` 均已按此约定落地（对应枚举 `TaskStatus`，上传创建任务时写入
 > `PENDING`）。
+>
+> 自 0.1.4 起 `document.status` 由异步分析链路同步维护：任务 `SUCCESS` 时文件置 `2`，终态失败置 `3`。
 
 ### 6.3 风险等级
 
@@ -734,8 +830,11 @@ ID。
    配置见 `anxin.oss.*` 环境变量），对象名由服务端生成（UUID + Tika 真实后缀），不拼接用户原始文件名。
 6. 微信内容安全依赖真实 `secret`：图片同步审核（imgSecCheck）未配置或失败时返回 `10009`；违规内容（87014）返回
    `10008`，且不会进入 OSS/数据库（先审核后入库）。
-7. mediaCheckAsync 异步审核与文档解析/LLM 分析目前为骨架（mock 放行），异步任务创建后直接置 `SUCCESS`；
+7. 异步分析链路已完整落地：RocketMQ 投递/消费/30 秒补偿调度、文档解析、LLM 风险分析、结果落库均已实现；微信异步审核
+   （mediaCheckAsync）已从代码中移除，仅保留 ≤4MB 图片的同步 imgSecCheck；图片任务当前仅 OCR 识别、暂不产出风险报告（接入中）。
    分页参数上限与 AI 接口限流值待定。
+8. OSS bucket 必须配置为公共读：消费端按 `fileUrl` 匿名拉取文件，私有 ACL 会导致下载 403（任务重试 3 次后 FAILED）；
+   小程序展示文件同样依赖公共读。
 
 ## 8. 版本记录
 
@@ -745,3 +844,4 @@ ID。
 | 0.1.1 | 2026-09-05 | 统一鉴权失败响应格式，并补充业务错误码返回说明                                                                               |
 | 0.1.2 | 2026-09-05 | 移除账号冻结机制：user 表删除 status 字段，错误码重排为连续编号                                                              |
 | 0.1.3 | 2026-09-06 | 新增头像上传（§3.5）与文件上传（§3.6）；OSS 存储与微信内容安全校验落地；分析任务异步链路与状态机落地；错误码补充 10006~10010 |
+| 0.1.4 | 2026-09-11 | 异步链路由线程池替换为 RocketMQ（投递/监听/30 秒补偿调度）；新增分析任务轮询（§3.7）与风险报告接口（§3.8）；新增 anxin-document-ocr（PaddleOCR）；文档解析器合并为 TikaDocumentParser；空解析走非重试分支直接 FAILED；错误码补充 10011~10016 |

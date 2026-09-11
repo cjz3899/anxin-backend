@@ -20,7 +20,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(jwtTokenUserInterceptor)
                 .addPathPatterns("/api/user/**",
                         "/api/document/**",
-                        "/api/analysis/**",
                         "/api/analysis/**")
                 .excludePathPatterns("/api/user/login", "/api/user/refresh");
         // TODO 添加其他拦截器配置
