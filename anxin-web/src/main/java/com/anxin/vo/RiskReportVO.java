@@ -30,11 +30,15 @@ public class RiskReportVO {
 
     private String riskSummary;
 
-    private Integer highCount;
+    /**
+     * 整体风险等级：HIGH/MEDIUM/LOW（服务端由高/中/低数量推导，各级数量不返回前端）
+     */
+    private String riskLevel;
 
-    private Integer mediumCount;
-
-    private Integer lowCount;
+    /**
+     * 共发现的风险问题数量（图4 顶部卡片：共发现 N 项风险问题）
+     */
+    private Integer riskCount;
 
     private List<RiskDetailVO> risks;
 }

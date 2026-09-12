@@ -12,6 +12,8 @@ import com.anxin.mapper.DocumentMapper;
 import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
 import com.anxin.service.IAnalysisQueryService;
+import com.anxin.service.support.RiskLevelCalculator;
+import com.anxin.threadlocal.BaseContext;
 import com.anxin.vo.AnalysisTaskVO;
 import com.anxin.vo.RiskDetailVO;
 import com.anxin.vo.RiskReportVO;
@@ -62,6 +64,10 @@ public class AnalysisQueryServiceImpl implements IAnalysisQueryService {
 
     @Override
     public RiskReportVO getRiskReport(Long documentId) {
+        Document document = documentMapper.selectById(documentId);
+        if (Objects.isNull(document) || !document.getUserId().equals(BaseContext.getCurrentId())) {
+            throw new ServiceException(ResultCode.DOCUMENT_NOT_EXIST);
+        }
         AnalysisTask task = analysisTaskMapper.selectOne(new LambdaQueryWrapper<AnalysisTask>()
                 .eq(AnalysisTask::getDocumentId, documentId)
                 .eq(AnalysisTask::getTaskType, TASK_TYPE_RISK_ANALYSIS)
@@ -95,7 +101,6 @@ public class AnalysisQueryServiceImpl implements IAnalysisQueryService {
                         .impact(d.getImpact())
                         .suggestion(d.getSuggestion())
                         .build()).toList();
-        Document document = documentMapper.selectById(documentId);
         return RiskReportVO.builder()
                 .documentId(String.valueOf(documentId))
                 .taskId(String.valueOf(task.getId()))
@@ -105,9 +110,10 @@ public class AnalysisQueryServiceImpl implements IAnalysisQueryService {
                 .startedTime(task.getStartedTime())
                 .finishedTime(task.getFinishedTime())
                 .riskSummary(riskResult.getRiskSummary())
-                .highCount(riskResult.getHighCount())
-                .mediumCount(riskResult.getMediumCount())
-                .lowCount(riskResult.getLowCount())
+                //整体风险等级由各级数量推导，数量本身不返回前端
+                .riskLevel(RiskLevelCalculator.derive(
+                        riskResult.getHighCount(), riskResult.getMediumCount(), riskResult.getLowCount()))
+                .riskCount(risks.size())
                 .risks(risks)
                 .build();
     }

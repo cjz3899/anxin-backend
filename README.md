@@ -587,9 +587,8 @@ token: eyJhbGciOiJIUzI1NiJ9...
     "startedTime": "2026-09-11 10:00:05",
     "finishedTime": "2026-09-11 10:00:42",
     "riskSummary": "文件存在较高风险条款，建议重点核查违约责任和免责条款。",
-    "highCount": 1,
-    "mediumCount": 2,
-    "lowCount": 0,
+    "riskLevel": "HIGH",
+    "riskCount": 3,
     "risks": [
       {
         "id": "30001",
@@ -613,7 +612,8 @@ token: eyJhbGciOiJIUzI1NiJ9...
 | `fileName` / `fileType` / `fileSize`         | `String`/`Integer`| 文件基本信息                             |
 | `startedTime` / `finishedTime`               | `String`          | 分析起止时间                             |
 | `riskSummary`                                | `String`          | 整体风险摘要                             |
-| `highCount` / `mediumCount` / `lowCount`     | `Integer`         | 高/中/低风险数量                         |
+| `riskLevel`                                  | `String`          | 整体风险等级 `HIGH/MEDIUM/LOW`（服务端由各级数量推导，各级数量不返回前端） |
+| `riskCount`                                  | `Integer`         | 共发现的风险问题数量                     |
 | `risks`                                      | `Array`           | 风险明细，`riskLevel` 口径见 §6.3        |
 
 失败场景：任务不存在 `10014`；分析尚未完成 `10015`；结果缺失 `10016`。

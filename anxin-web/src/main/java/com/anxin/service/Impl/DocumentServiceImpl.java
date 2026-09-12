@@ -3,18 +3,24 @@ package com.anxin.service.impl;
 import com.anxin.constant.UploadConstant;
 import com.anxin.entity.AnalysisTask;
 import com.anxin.entity.Document;
+import com.anxin.entity.RiskResult;
 import com.anxin.enums.ResultCode;
 import com.anxin.enums.TaskStatus;
 import com.anxin.exception.ServiceException;
 import com.anxin.mapper.AnalysisTaskMapper;
 import com.anxin.mapper.DocumentMapper;
+import com.anxin.mapper.RiskResultMapper;
+import com.anxin.result.PageResult;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.anxin.rocketmq.producer.TaskProducer;
 import com.anxin.service.IDocumentService;
 import com.anxin.service.support.FileTypeService;
 import com.anxin.service.support.OssStorageService;
+import com.anxin.service.support.RiskLevelCalculator;
 import com.anxin.threadlocal.BaseContext;
+import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +29,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -54,6 +63,12 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
 
     @Resource
     private TaskProducer taskProducer;
+
+    @Resource
+    private DocumentMapper documentMapper;
+
+    @Resource
+    private RiskResultMapper riskResultMapper;
 
     @Override
     public DocumentUploadVO upload(MultipartFile file) {
@@ -137,6 +152,94 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .taskId(String.valueOf(task.getId()))
                 .status(TaskStatus.PENDING.name())
                 .build();
+    }
+
+    @Override
+    public PageResult<DocumentListVO> getListDocuments(Integer pageSize, String statusGroup, String cursor) {
+        int size = (pageSize == null || pageSize < 1) ? 5 : Math.min(pageSize, 10);
+        String group = normalizeStatusGroup(statusGroup);
+        Long cursorId = parserCursor(cursor);
+        Long userId = BaseContext.getCurrentId();
+        long total = documentMapper.countByUser(userId, group);
+        //多取一条用于判断是否还有下一页
+        List<Document> documents = documentMapper.selectPageByUser(userId, group, cursorId, size + 1);
+
+        boolean hasMore = documents.size() > size;
+        String nextCursor = hasMore ? String.valueOf(documents.get(documents.size() - 1).getId()) : null;
+        documents = hasMore ? documents.subList(0, size) : documents;
+
+        Map<Long, RiskResult> latestResultByDocId = loadLatestResults(documents);
+        List<DocumentListVO> records = documents.stream().map(d -> {
+            RiskResult latest = latestResultByDocId.get(d.getId());
+            return DocumentListVO.builder()
+                    .id(String.valueOf(d.getId()))
+                    .fileName(d.getFileName())
+                    .fileType(d.getFileType())
+                    .fileSize(d.getFileSize())
+                    .status(TaskStatus.fromCode(d.getStatus()).name())
+                    .summary(latest == null ? null : latest.getRiskSummary())
+                    //整体等级由各级数量在服务端推导，数量本身不返回前端
+                    .riskLevel(latest == null ? null : RiskLevelCalculator.derive(
+                            latest.getHighCount(), latest.getMediumCount(), latest.getLowCount()))
+                    .createdTime(d.getCreatedTime())
+                    .updatedTime(d.getUpdatedTime())
+                    .build();
+        }).toList();
+        return PageResult.of(records, nextCursor, total);
+    }
+
+    /**
+     * 批量取每个文件最新一条风险结果（摘要 + 各级数量；结果按 id 倒序，putIfAbsent 保留最新）
+     */
+    private Map<Long, RiskResult> loadLatestResults(List<Document> documents) {
+        if (documents.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> documentIds = documents.stream().map(Document::getId).toList();
+        /**
+         * 相当于select * from risk_result
+         * where document_id in (?, ?, ? ...)
+         * order by id desc
+         */
+        List<RiskResult> results = riskResultMapper.selectList(new LambdaQueryWrapper<RiskResult>()
+                .in(RiskResult::getDocumentId, documentIds)
+                .orderByDesc(RiskResult::getId));
+        Map<Long, RiskResult> latestByDocId = new HashMap<>();
+        for (RiskResult result : results) {
+            latestByDocId.putIfAbsent(result.getDocumentId(), result);
+        }
+        return latestByDocId;
+    }
+
+    /**
+     * 游标解析：null/空 = 第一页；非数字或非正值按参数错误拒绝
+     */
+    private Long parserCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            Long id = Long.valueOf(cursor);
+            if (id <= 0) {
+                throw new NumberFormatException();
+            }
+            return id;
+        } catch (NumberFormatException e) {
+            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "非法的分页游标 : " + cursor);
+        }
+    }
+
+    /**
+     * Tab 状态分组：ALL-全部，PROCESSING-分析中（PENDING/PROCESSING），SUCCESS-已完成，FAILED-失败
+     */
+    private String normalizeStatusGroup(String statusGroup) {
+        if (statusGroup == null || statusGroup.isBlank() || "ALL".equals(statusGroup)) {
+            return "ALL";
+        }
+        if ("PROCESSING".equals(statusGroup) || "SUCCESS".equals(statusGroup) || "FAILED".equals(statusGroup)) {
+            return statusGroup;
+        }
+        throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "非法的状态分组 : " + statusGroup);
     }
 
     private String extensionOf(String fileName) {

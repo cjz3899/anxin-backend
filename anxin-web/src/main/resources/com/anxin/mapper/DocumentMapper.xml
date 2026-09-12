@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.anxin.mapper.DocumentMapper">
+    <sql id="tabCondition">
+        WHERE user_id = #{userId}
+        <choose>
+            <when test="statusGroup == 'PROCESSING'">
+                AND status IN (0, 1)
+            </when>
+            <when test="statusGroup == 'SUCCESS'">
+                AND status = 2
+            </when>
+            <when test="statusGroup == 'FAILED'">
+                AND status = 3
+            </when>
+            <otherwise/>
+        </choose>
+    </sql>
+
+    <!-- 总数不含游标条件：统计的是该 Tab 下的全部条数 -->
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM document
+        <include refid="tabCondition"/>
+    </select>
+
+    <select id="selectPageByUser" resultType="com.anxin.entity.Document">
+        SELECT id, user_id, file_name, file_type, file_size, file_url, status, created_time, updated_time
+        FROM document
+        <include refid="tabCondition"/>
+        <if test="cursor != null">
+            /*"&lt;"是xml中的小于号*/
+            AND id &lt; #{cursor}
+        </if>
+        ORDER BY id DESC
+        `LIMIT` #{pageSize}
+    </select>
+</mapper>

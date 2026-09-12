@@ -37,7 +37,9 @@ public enum ResultCode {
 
     ANALYSIS_NOT_COMPLETED(10015, "分析尚未完成，请先轮询任务状态"),
 
-    ANALYSIS_RESULT_MISSING(10016, "分析结果缺失");
+    ANALYSIS_RESULT_MISSING(10016, "分析结果缺失"),
+
+    DOCUMENT_NOT_EXIST(10017, "文档不存在");
 
 
     private final Integer code;

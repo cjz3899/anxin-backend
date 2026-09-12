@@ -1,8 +1,10 @@
 package com.anxin.service;
 
+import com.anxin.entity.Document;
+import com.anxin.result.PageResult;
+import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.anxin.entity.Document;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -15,4 +17,8 @@ public interface IDocumentService extends IService<Document> {
      * 校验大小/真实类型 → 存 OSS → 落库 document + analysis_task(PENDING) → 投递异步任务。
      */
     DocumentUploadVO upload(MultipartFile file);
+
+
+    PageResult<DocumentListVO> getListDocuments(Integer pageSize, String statusGroup, String cursor);
+
 }
