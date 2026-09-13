@@ -25,6 +25,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import com.anxin.ocr.OcrException;
+import com.anxin.parser.SectionSplitter;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,20 +66,20 @@ public class DocumentAnalysisService {
 
     public void analysis(AnalysisTaskMessage analysisTaskMessage) {
         byte[] bytes = ossStorageService.download(analysisTaskMessage.getFileUrl());
-        //  引入OCR解析图片
-        if ("IMAGE".equals(analysisTaskMessage.getFileType())) {
-            String fullText = ocrService.recognize(bytes, "image/jpeg");
-            markDocumentSuccess(analysisTaskMessage.getDocumentId());
-            return;
-        }
-
-        //重试幂等，清掉上次执行可能残留的半截数据
+        boolean image = "IMAGE".equals(analysisTaskMessage.getFileType());
+        //重试幂等，清掉上次执行可能残留的半截数据（图片与文档分支都要清）
         clearExisting(analysisTaskMessage);
 
-        List<ParsedSection> sections = documentParser.parse(new ByteArrayInputStream(bytes), analysisTaskMessage.getFileType());
+        //取条款：文档走 Tika 解析，图片走 OCR 后复用同一套条款切分逻辑
+        List<ParsedSection> sections = image
+                ? splitOcrText(analysisTaskMessage, bytes)
+                : documentParser.parse(new ByteArrayInputStream(bytes), analysisTaskMessage.getFileType());
+
         if (sections.isEmpty()) {
-            //文件解析不出来，重试无意义，直接终止并提示用户上传有效文件
-            throw new NonRetryableTaskException("未解析到有效条款内容，请重新上传");
+            //解析不出内容，重试无意义，直接终止并提示用户
+            throw new NonRetryableTaskException(image
+                    ? "未识别到有效条款内容，请上传清晰的合同图片"
+                    : "未解析到有效条款内容，请重新上传");
         }
 
         Map<String, Long> sectionIdByNo = saveSections(analysisTaskMessage.getDocumentId(), sections);
@@ -180,5 +184,26 @@ public class DocumentAnalysisService {
                 .eq(Document::getId, documentId)
                 .set(Document::getStatus, TaskStatus.SUCCESS.getCode())
                 .set(Document::getUpdatedTime, LocalDateTime.now()));
+    }
+
+    /**
+     * 图片分支：OCR 识别全文后，复用文档同一套条款切分逻辑，
+     * 使图片与 PDF/Word 走完全一致的下游链路（拆节落库 → LLM 分析 → 风险落库）。
+     */
+    private List<ParsedSection> splitOcrText(AnalysisTaskMessage analysisTaskMessage, byte[] bytes) {
+        try {
+            //mime 当前未参与 OCR 推理，仅作接口语义占位
+            String fullText = ocrService.recognize(bytes, "image/jpeg");
+            if (fullText == null) {
+                //识别服务返回 null 时按未识别到内容处理，避免下方取 length 时空指针
+                throw new NonRetryableTaskException("未识别到有效条款内容，请上传清晰的合同图片");
+            }
+            log.info("图片 OCR 完成 documentId : {}, 文本长度 : {}",
+                    analysisTaskMessage.getDocumentId(), fullText.length());
+            return SectionSplitter.splitByClause(fullText);
+        } catch (OcrException e) {
+            //图片模糊、无文字属业务性失败，重试无意义
+            throw new NonRetryableTaskException("图片识别失败：" + e.getMessage());
+        }
     }
 }
