@@ -167,14 +167,15 @@ public class DocumentAnalysisService {
     }
 
     private void clearExisting(AnalysisTaskMessage analysisTaskMessage) {
+        //按文件维度清理而非 taskId：reanalyze 会换新 taskId，按 taskId 删不掉旧任务的残留
         List<RiskResult> oldResults = riskResultMapper.selectList(new LambdaQueryWrapper<RiskResult>()
-                .eq(RiskResult::getTaskId, analysisTaskMessage.getTaskId()));
+                .eq(RiskResult::getDocumentId, analysisTaskMessage.getDocumentId()));
         for (RiskResult old : oldResults) {
             riskDetailMapper.delete(new LambdaQueryWrapper<RiskDetail>()
                     .eq(RiskDetail::getRiskResultId, old.getId()));
         }
         riskResultMapper.delete(new LambdaQueryWrapper<RiskResult>()
-                .eq(RiskResult::getTaskId, analysisTaskMessage.getTaskId()));
+                .eq(RiskResult::getDocumentId, analysisTaskMessage.getDocumentId()));
         documentSectionMapper.delete(new LambdaQueryWrapper<DocumentSection>()
                 .eq(DocumentSection::getDocumentId, analysisTaskMessage.getDocumentId()));
     }

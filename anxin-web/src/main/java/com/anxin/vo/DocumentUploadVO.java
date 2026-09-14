@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 文件上传成功出参。
+ * 文件上传成功出参
  */
 @Data
 @Builder

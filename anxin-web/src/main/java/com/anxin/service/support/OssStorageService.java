@@ -88,6 +88,26 @@ public class OssStorageService {
     }
 
     /**
+     * 按公共读 URL 删除 OSS 对象（key 从 URL path 中提取），失败仅告警不抛出
+     */
+    public void delete(String fileUrl) {
+        try {
+            /**
+             * TODO 优化：从 URL 中提取 key 的逻辑可以优化
+             * getPath() 会做 URL 解码，如果 key 里含特殊字符（如空格、中文、+），解码后可能和原始 key 不一致，导致删不到
+             * 上传时就保存 object key 到数据库，删除时直接用 key，而不是每次从 URL 反解析
+             */
+            String key = new java.net.URI(fileUrl).getPath();
+            if (key.startsWith("/")) {
+                key = key.substring(1);
+            }
+            ossClient.deleteObject(ossProperties.bucket(), key);
+        } catch (Exception e) {
+            log.warn("OSS 对象删除失败 url : {}", fileUrl, e);
+        }
+    }
+
+    /**
      * 由对象 key 生成可公开访问的永久 URL：
      * 配置了 public-domain 时使用自定义域名，否则使用默认域名 https://{bucket}.{endpoint}/{key}。
      */

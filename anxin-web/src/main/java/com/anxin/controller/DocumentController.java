@@ -3,6 +3,7 @@ package com.anxin.controller;
 import com.anxin.result.PageResult;
 import com.anxin.result.Result;
 import com.anxin.service.IDocumentService;
+import com.anxin.vo.DocumentDetailVO;
 import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
 import jakarta.annotation.Resource;
@@ -33,4 +34,21 @@ public class DocumentController {
                                                    @RequestParam(required = false) String cursor) {
         return Result.success(documentService.getListDocuments(pageSize, statusGroup, cursor));
     }
+
+    @GetMapping("/{documentId}")
+    public Result<DocumentDetailVO> detail(@PathVariable Long documentId) {
+        return Result.success(documentService.detail(documentId));
+    }
+
+    @DeleteMapping("/{documentId}")
+    public Result<Void> delete(@PathVariable Long documentId) {
+        documentService.deleteDocument(documentId);
+        return Result.success();
+    }
+
+    @PostMapping("/{documentId}/reanalyze")
+    public Result<DocumentUploadVO> reanalyze(@PathVariable Long documentId) {
+        return Result.success("重新分析任务已创建", documentService.reanalyze(documentId));
+    }
+
 }

@@ -18,9 +18,10 @@ public class DocumentDetailVO {
     private Long fileSize;
     private String status;
     private String summary;
-    private Integer highCount;
-    private Integer mediumCount;
-    private Integer lowCount;
+    /**
+     * 整体风险等级：HIGH/MEDIUM/LOW（服务端推导），null 表示暂无分析结果
+     */
+    private String riskLevel;
     private String latestTaskId;
     private String taskStatus;
     private String errorMessage;

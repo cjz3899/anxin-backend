@@ -2,6 +2,7 @@ package com.anxin.service;
 
 import com.anxin.entity.Document;
 import com.anxin.result.PageResult;
+import com.anxin.vo.DocumentDetailVO;
 import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.extension.service.IService;
@@ -21,4 +22,9 @@ public interface IDocumentService extends IService<Document> {
 
     PageResult<DocumentListVO> getListDocuments(Integer pageSize, String statusGroup, String cursor);
 
+    DocumentDetailVO detail(Long documentId);
+
+    void deleteDocument(Long documentId);
+
+    DocumentUploadVO reanalyze(Long documentId);
 }

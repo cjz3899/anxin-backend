@@ -20,7 +20,7 @@ public class DocumentListVO {
     private String summary;
     /**
      * 整体风险等级：HIGH/MEDIUM/LOW（服务端由最新风险结果的各级数量推导）；
-     * null 表示暂无分析结果（图7 卡片徽标显示「已完成」）
+     * null 表示暂无分析结果
      */
     private String riskLevel;
     private LocalDateTime createdTime;

@@ -1,15 +1,11 @@
 package com.anxin.service.impl;
 
 import com.anxin.constant.UploadConstant;
-import com.anxin.entity.AnalysisTask;
-import com.anxin.entity.Document;
-import com.anxin.entity.RiskResult;
+import com.anxin.entity.*;
 import com.anxin.enums.ResultCode;
 import com.anxin.enums.TaskStatus;
 import com.anxin.exception.ServiceException;
-import com.anxin.mapper.AnalysisTaskMapper;
-import com.anxin.mapper.DocumentMapper;
-import com.anxin.mapper.RiskResultMapper;
+import com.anxin.mapper.*;
 import com.anxin.result.PageResult;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.anxin.rocketmq.producer.TaskProducer;
@@ -18,6 +14,7 @@ import com.anxin.service.support.FileTypeService;
 import com.anxin.service.support.OssStorageService;
 import com.anxin.service.support.RiskLevelCalculator;
 import com.anxin.threadlocal.BaseContext;
+import com.anxin.vo.DocumentDetailVO;
 import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -29,11 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 文档上传与分析任务创建
@@ -69,6 +62,12 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
 
     @Resource
     private RiskResultMapper riskResultMapper;
+
+    @Resource
+    private RiskDetailMapper riskDetailMapper;
+
+    @Resource
+    private DocumentSectionMapper documentSectionMapper;
 
     @Override
     public DocumentUploadVO upload(MultipartFile file) {
@@ -164,10 +163,6 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         //多取一条用于判断是否还有下一页
         List<Document> documents = documentMapper.selectPageByUser(userId, group, cursorId, size + 1);
 
-        boolean hasMore = documents.size() > size;
-        String nextCursor = hasMore ? String.valueOf(documents.get(documents.size() - 1).getId()) : null;
-        documents = hasMore ? documents.subList(0, size) : documents;
-
         Map<Long, RiskResult> latestResultByDocId = loadLatestResults(documents);
         List<DocumentListVO> records = documents.stream().map(d -> {
             RiskResult latest = latestResultByDocId.get(d.getId());
@@ -185,7 +180,109 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                     .updatedTime(d.getUpdatedTime())
                     .build();
         }).toList();
+
+        //多取了一条：超过 size 说明还有下一页，游标取本页最后一条的 id
+        boolean hasMore = documents.size() > size;
+        String nextCursor = hasMore ? String.valueOf(documents.get(documents.size() - 1).getId()) : null;
         return PageResult.of(records, nextCursor, total);
+    }
+
+    @Override
+    public DocumentDetailVO detail(Long documentId) {
+        Document document = getOwnedDocument(documentId);
+        AnalysisTask task = analysisTaskMapper.selectOne(new LambdaQueryWrapper<AnalysisTask>()
+                .eq(AnalysisTask::getDocumentId, documentId)
+                .orderByDesc(AnalysisTask::getId)
+                .last("LIMIT 1"));
+        RiskResult riskResult = riskResultMapper.selectOne(new LambdaQueryWrapper<RiskResult>()
+                .eq(RiskResult::getDocumentId, documentId)
+                .orderByDesc(RiskResult::getId)
+                .last("LIMIT 1"));
+        return DocumentDetailVO.builder()
+                .id(String.valueOf(document.getId()))
+                .fileName(document.getFileName())
+                .fileType(document.getFileType())
+                .fileSize(document.getFileSize())
+                .status(TaskStatus.fromCode(document.getStatus()).name())
+                .summary(riskResult == null ? null : riskResult.getRiskSummary())
+                .riskLevel(riskResult == null ? null : RiskLevelCalculator.derive(riskResult.getHighCount(),
+                        riskResult.getMediumCount(),
+                        riskResult.getLowCount()))
+                .latestTaskId(task == null ? null : String.valueOf(task.getId()))
+                .taskStatus(task == null ? null : TaskStatus.fromCode(task.getStatus()).name())
+                .errorMessage(task == null ? null : task.getErrorMessage())
+                .createdTime(document.getCreatedTime())
+                .updatedTime(document.getUpdatedTime())
+                .build();
+    }
+
+    @Override
+    public void deleteDocument(Long documentId) {
+        Document document = getOwnedDocument(documentId);
+        //先删任务行：防止在途消息被消费端"条件更新抢占"后复活数据
+        analysisTaskMapper.delete(new LambdaQueryWrapper<AnalysisTask>()
+                .eq(AnalysisTask::getDocumentId, documentId));
+        //为什么要使用selectList，删除之前重试生成的残留数据
+        List<RiskResult> results = riskResultMapper.selectList(new LambdaQueryWrapper<RiskResult>()
+                .eq(RiskResult::getDocumentId, documentId));
+        for (RiskResult result : results) {
+            riskDetailMapper.delete(new LambdaQueryWrapper<RiskDetail>()
+                    .eq(RiskDetail::getRiskResultId, result.getId()));
+        }
+        riskResultMapper.delete(new LambdaQueryWrapper<RiskResult>()
+                .eq(RiskResult::getDocumentId, documentId));
+        documentSectionMapper.delete(new LambdaQueryWrapper<DocumentSection>()
+                .eq(DocumentSection::getDocumentId, documentId));
+        ossStorageService.delete(document.getFileUrl());
+    }
+
+    @Override
+    public DocumentUploadVO reanalyze(Long documentId) {
+        Document document = getOwnedDocument(documentId);
+        Long processing = analysisTaskMapper.selectCount(new LambdaQueryWrapper<AnalysisTask>()
+                .eq(AnalysisTask::getDocumentId, documentId)
+                .in(AnalysisTask::getStatus, TaskStatus.PENDING.getCode(), TaskStatus.PROCESSING.getCode()));
+        if (processing != null && processing > 0) {
+            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "已有进行中的分析任务，请稍后再试");
+        }
+        return createAnalysisTask(document);
+    }
+
+    /**
+     * 创建分析任务并投递消息（upload 与 reanalyze 共用）
+     */
+    private DocumentUploadVO createAnalysisTask(Document document) {
+        AnalysisTask task = AnalysisTask.builder()
+                .documentId(document.getId())
+                .taskType(TASK_TYPE_RISK_ANALYSIS)
+                .status(TaskStatus.PENDING.getCode())
+                .retryCount(0)
+                .createdTime(LocalDateTime.now())
+                .updatedTime(LocalDateTime.now())
+                .build();
+        analysisTaskMapper.insert(task);
+        taskProducer.dispatch(AnalysisTaskMessage.builder()
+                .taskId(task.getId())
+                .documentId(document.getId())
+                .fileUrl(document.getFileUrl())
+                .fileType(document.getFileType())
+                .build());
+        return DocumentUploadVO.builder()
+                .documentId(String.valueOf(document.getId()))
+                .taskId(String.valueOf(task.getId()))
+                .status(TaskStatus.PENDING.name())
+                .build();
+    }
+
+    /**
+     * 归属校验，文件不存在或非当前用户所有，统一按不存在处理
+     */
+    private Document getOwnedDocument(Long documentId) {
+        Document document = getById(documentId);
+        if (document == null || !document.getUserId().equals(BaseContext.getCurrentId())) {
+            throw new ServiceException(ResultCode.DOCUMENT_NOT_EXIST);
+        }
+        return document;
     }
 
     /**
