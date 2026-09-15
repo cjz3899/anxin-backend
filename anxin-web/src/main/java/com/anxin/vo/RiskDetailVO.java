@@ -15,6 +15,10 @@ public class RiskDetailVO {
 
     private String sectionId;
 
+    private String sectionNo;
+
+    private String sectionTitle;
+
     private String riskType;
 
     private String riskLevel;

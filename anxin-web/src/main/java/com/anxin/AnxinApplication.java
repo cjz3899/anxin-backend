@@ -13,7 +13,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class AnxinApplication {
     public static void main(String[] args) {
-        //指定 RocketMQ 客户端日志根目录，可用 -Dsmartchat.log.root 覆盖
+        //指定 RocketMQ 客户端日志根目录，可用 -Danxin.log.root 覆盖（相对路径基于 JVM 工作目录）
         System.setProperty("rocketmq.log.root", System.getProperty("anxin.log.root", "logs"));
         SpringApplication.run(AnxinApplication.class, args);
     }

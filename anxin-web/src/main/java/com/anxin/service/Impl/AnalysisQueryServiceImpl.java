@@ -1,16 +1,10 @@
 package com.anxin.service.impl;
 
-import com.anxin.entity.AnalysisTask;
-import com.anxin.entity.Document;
-import com.anxin.entity.RiskDetail;
-import com.anxin.entity.RiskResult;
+import com.anxin.entity.*;
 import com.anxin.enums.ResultCode;
 import com.anxin.enums.TaskStatus;
 import com.anxin.exception.ServiceException;
-import com.anxin.mapper.AnalysisTaskMapper;
-import com.anxin.mapper.DocumentMapper;
-import com.anxin.mapper.RiskDetailMapper;
-import com.anxin.mapper.RiskResultMapper;
+import com.anxin.mapper.*;
 import com.anxin.service.IAnalysisQueryService;
 import com.anxin.service.support.RiskLevelCalculator;
 import com.anxin.threadlocal.BaseContext;
@@ -18,6 +12,7 @@ import com.anxin.vo.AnalysisTaskVO;
 import com.anxin.vo.RiskDetailVO;
 import com.anxin.vo.RiskReportVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,7 +23,7 @@ import java.util.Objects;
 
 @Slf4j
 @Service
-public class AnalysisQueryServiceImpl implements IAnalysisQueryService {
+public class AnalysisQueryServiceImpl extends ServiceImpl<AnalysisTaskMapper, AnalysisTask> implements IAnalysisQueryService {
 
     private static final String TASK_TYPE_RISK_ANALYSIS = "RISK_ANALYSIS";
 
@@ -43,6 +38,9 @@ public class AnalysisQueryServiceImpl implements IAnalysisQueryService {
 
     @Resource
     private DocumentMapper documentMapper;
+
+    @Resource
+    private DocumentSectionMapper documentSectionMapper;
 
     @Override
     public AnalysisTaskVO getAnalysisTask(Long taskId) {
@@ -115,6 +113,33 @@ public class AnalysisQueryServiceImpl implements IAnalysisQueryService {
                         riskResult.getHighCount(), riskResult.getMediumCount(), riskResult.getLowCount()))
                 .riskCount(risks.size())
                 .risks(risks)
+                .build();
+    }
+
+    @Override
+    public RiskDetailVO getRiskDetail(String documentId, String riskId) {
+        //这里的riskId是RiskDetail的id
+        Document document = documentMapper.selectById(documentId);
+        if (documentId == null || !document.getUserId().equals(BaseContext.getCurrentId())) {
+            throw new ServiceException(ResultCode.DOCUMENT_NOT_EXIST);
+        }
+        RiskDetail detail = riskDetailMapper.selectById(riskId);
+        if (detail == null) {
+            throw new ServiceException(ResultCode.RISK_DETAIL_NOT_EXIST);
+        }
+        DocumentSection section = documentSectionMapper.selectById(detail.getSectionId());
+        return RiskDetailVO.builder()
+                .id(String.valueOf(detail.getId()))
+                .sectionId(String.valueOf(detail.getSectionId()))
+                .sectionNo(section == null ? null : section.getSectionNo())
+                .sectionTitle(section == null ? null : section.getTitle())
+                .riskType(detail.getRiskType())
+                .riskLevel(detail.getRiskLevel())
+                .title(detail.getTitle())
+                .originalText(detail.getOriginalText())
+                .reason(detail.getReason())
+                .impact(detail.getImpact())
+                .suggestion(detail.getSuggestion())
                 .build();
     }
 }

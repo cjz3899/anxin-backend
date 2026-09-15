@@ -35,6 +35,6 @@
             AND id &lt; #{cursor}
         </if>
         ORDER BY id DESC
-        `LIMIT` #{pageSize}
+        LIMIT #{pageSize}
     </select>
 </mapper>

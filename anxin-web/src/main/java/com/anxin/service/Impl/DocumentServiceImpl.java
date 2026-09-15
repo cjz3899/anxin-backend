@@ -163,6 +163,10 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         //多取一条用于判断是否还有下一页
         List<Document> documents = documentMapper.selectPageByUser(userId, group, cursorId, size + 1);
 
+        //多取了一条：超过 size 说明还有下一页，截掉用于探测的最后一条
+        boolean hasMore = documents.size() > size;
+        documents = hasMore ? documents.subList(0, size) : documents;
+
         Map<Long, RiskResult> latestResultByDocId = loadLatestResults(documents);
         List<DocumentListVO> records = documents.stream().map(d -> {
             RiskResult latest = latestResultByDocId.get(d.getId());
@@ -181,8 +185,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                     .build();
         }).toList();
 
-        //多取了一条：超过 size 说明还有下一页，游标取本页最后一条的 id
-        boolean hasMore = documents.size() > size;
+        //有下一页时，游标取本页最后一条的 id
         String nextCursor = hasMore ? String.valueOf(documents.get(documents.size() - 1).getId()) : null;
         return PageResult.of(records, nextCursor, total);
     }
@@ -233,6 +236,8 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .eq(RiskResult::getDocumentId, documentId));
         documentSectionMapper.delete(new LambdaQueryWrapper<DocumentSection>()
                 .eq(DocumentSection::getDocumentId, documentId));
+        removeById(documentId);
+        // 放最后：OSS 删除失败不影响已清理的数据，仅告警
         ossStorageService.delete(document.getFileUrl());
     }
 

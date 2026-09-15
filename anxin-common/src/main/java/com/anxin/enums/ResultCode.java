@@ -39,7 +39,9 @@ public enum ResultCode {
 
     ANALYSIS_RESULT_MISSING(10016, "分析结果缺失"),
 
-    DOCUMENT_NOT_EXIST(10017, "文档不存在");
+    DOCUMENT_NOT_EXIST(10017, "文档不存在"),
+
+    RISK_DETAIL_NOT_EXIST(10018, "风险详情不存在");
 
 
     private final Integer code;

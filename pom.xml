@@ -130,6 +130,8 @@
                     <configuration>
                         <release>17</release>
                         <encoding>UTF-8</encoding>
+                        <!--Spring Boot 3 下 @RequestParam/@PathVariable 隐式参数名依赖此标志-->
+                        <parameters>true</parameters>
                     </configuration>
                 </plugin>
                 <plugin>

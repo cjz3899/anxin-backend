@@ -13,8 +13,10 @@ import com.anxin.mapper.DocumentMapper;
 import com.anxin.mapper.DocumentSectionMapper;
 import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
+import com.anxin.ocr.OcrException;
 import com.anxin.ocr.service.OcrService;
 import com.anxin.parser.DocumentParser;
+import com.anxin.parser.SectionSplitter;
 import com.anxin.parser.model.ParsedSection;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -25,10 +27,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
-import java.util.Collections;
-import com.anxin.ocr.OcrException;
-import com.anxin.parser.SectionSplitter;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,24 +64,32 @@ public class DocumentAnalysisService {
 
     public void analysis(AnalysisTaskMessage analysisTaskMessage) {
         byte[] bytes = ossStorageService.download(analysisTaskMessage.getFileUrl());
-        boolean image = "IMAGE".equals(analysisTaskMessage.getFileType());
-        //重试幂等，清掉上次执行可能残留的半截数据（图片与文档分支都要清）
+
+        if ("IMAGE".equals(analysisTaskMessage.getFileType())) {
+            //与文档分支一致的幂等清理
+            clearExisting(analysisTaskMessage);
+            String fullText = ocrService.recognize(bytes, "image/jpeg");
+            List<ParsedSection> sections = SectionSplitter.splitByClause(fullText);
+            if (sections.isEmpty()) {
+                throw new NonRetryableTaskException("图片中未识别到有效条款内容，请上传清晰的文字图片");
+            }
+            Map<String, Long> sectionIdByNo = saveSections(analysisTaskMessage.getDocumentId(), sections);
+            RiskAnalysisResult result = riskAnalyzer.analyze(sections);
+            saveRiskResult(analysisTaskMessage, result, sectionIdByNo);
+            markDocumentSuccess(analysisTaskMessage.getDocumentId());
+            return;
+        }
+
+        //重试幂等，清掉上次执行可能残留的半截数据
         clearExisting(analysisTaskMessage);
 
-        //取条款：文档走 Tika 解析，图片走 OCR 后复用同一套条款切分逻辑
-        List<ParsedSection> sections = image
-                ? splitOcrText(analysisTaskMessage, bytes)
-                : documentParser.parse(new ByteArrayInputStream(bytes), analysisTaskMessage.getFileType());
-
+        List<ParsedSection> sections = documentParser.parse(new ByteArrayInputStream(bytes), analysisTaskMessage.getFileType());
         if (sections.isEmpty()) {
-            //解析不出内容，重试无意义，直接终止并提示用户
-            throw new NonRetryableTaskException(image
-                    ? "未识别到有效条款内容，请上传清晰的合同图片"
-                    : "未解析到有效条款内容，请重新上传");
+            //文件解析不出来，重试无意义，直接终止并提示用户上传有效文件
+            throw new NonRetryableTaskException("未解析到有效条款内容，请重新上传");
         }
 
         Map<String, Long> sectionIdByNo = saveSections(analysisTaskMessage.getDocumentId(), sections);
-
         RiskAnalysisResult result = riskAnalyzer.analyze(sections);
         saveRiskResult(analysisTaskMessage, result, sectionIdByNo);
         markDocumentSuccess(analysisTaskMessage.getDocumentId());
