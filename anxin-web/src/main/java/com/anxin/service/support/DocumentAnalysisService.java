@@ -13,11 +13,9 @@ import com.anxin.mapper.DocumentMapper;
 import com.anxin.mapper.DocumentSectionMapper;
 import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
-import com.anxin.ocr.OcrException;
-import com.anxin.ocr.service.OcrService;
-import com.anxin.parser.DocumentParser;
-import com.anxin.parser.SectionSplitter;
 import com.anxin.parser.model.ParsedSection;
+import com.anxin.service.support.extract.SectionExtractor;
+import com.anxin.service.support.extract.SectionExtractorRegistry;
 import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -25,7 +23,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -54,38 +51,23 @@ public class DocumentAnalysisService {
     private DocumentSectionMapper documentSectionMapper;
 
     @Resource
-    private DocumentParser documentParser;
+    private SectionExtractorRegistry sectionExtractorRegistry;
 
     @Resource
     private RiskAnalyzer riskAnalyzer;
 
-    @Resource
-    private OcrService ocrService;
-
     public void analysis(AnalysisTaskMessage analysisTaskMessage) {
         byte[] bytes = ossStorageService.download(analysisTaskMessage.getFileUrl());
-
-        if ("IMAGE".equals(analysisTaskMessage.getFileType())) {
-            //与文档分支一致的幂等清理
-            clearExisting(analysisTaskMessage);
-            String fullText = ocrService.recognize(bytes, "image/jpeg");
-            List<ParsedSection> sections = SectionSplitter.splitByClause(fullText);
-            if (sections.isEmpty()) {
-                throw new NonRetryableTaskException("图片中未识别到有效条款内容，请上传清晰的文字图片");
-            }
-            Map<String, Long> sectionIdByNo = saveSections(analysisTaskMessage.getDocumentId(), sections);
-            RiskAnalysisResult result = riskAnalyzer.analyze(sections);
-            saveRiskResult(analysisTaskMessage, result, sectionIdByNo);
-            markDocumentSuccess(analysisTaskMessage.getDocumentId());
-            return;
-        }
 
         //重试幂等，清掉上次执行可能残留的半截数据
         clearExisting(analysisTaskMessage);
 
-        List<ParsedSection> sections = documentParser.parse(new ByteArrayInputStream(bytes), analysisTaskMessage.getFileType());
+        //按文件类型选策略：文档走 Tika 解析、图片走 OCR，之后的下游链路完全共用
+        SectionExtractor extractor = sectionExtractorRegistry.get(analysisTaskMessage.getFileType());
+        List<ParsedSection> sections = extractor.extract(
+                analysisTaskMessage.getDocumentId(), analysisTaskMessage.getFileType(), bytes);
         if (sections.isEmpty()) {
-            //文件解析不出来，重试无意义，直接终止并提示用户上传有效文件
+            //兜底不变量：任何策略都应产出条款，空列表说明文本抽取无内容，重试无意义
             throw new NonRetryableTaskException("未解析到有效条款内容，请重新上传");
         }
 
@@ -191,26 +173,5 @@ public class DocumentAnalysisService {
                 .eq(Document::getId, documentId)
                 .set(Document::getStatus, TaskStatus.SUCCESS.getCode())
                 .set(Document::getUpdatedTime, LocalDateTime.now()));
-    }
-
-    /**
-     * 图片分支：OCR 识别全文后，复用文档同一套条款切分逻辑，
-     * 使图片与 PDF/Word 走完全一致的下游链路（拆节落库 → LLM 分析 → 风险落库）。
-     */
-    private List<ParsedSection> splitOcrText(AnalysisTaskMessage analysisTaskMessage, byte[] bytes) {
-        try {
-            //mime 当前未参与 OCR 推理，仅作接口语义占位
-            String fullText = ocrService.recognize(bytes, "image/jpeg");
-            if (fullText == null) {
-                //识别服务返回 null 时按未识别到内容处理，避免下方取 length 时空指针
-                throw new NonRetryableTaskException("未识别到有效条款内容，请上传清晰的合同图片");
-            }
-            log.info("图片 OCR 完成 documentId : {}, 文本长度 : {}",
-                    analysisTaskMessage.getDocumentId(), fullText.length());
-            return SectionSplitter.splitByClause(fullText);
-        } catch (OcrException e) {
-            //图片模糊、无文字属业务性失败，重试无意义
-            throw new NonRetryableTaskException("图片识别失败：" + e.getMessage());
-        }
     }
 }
