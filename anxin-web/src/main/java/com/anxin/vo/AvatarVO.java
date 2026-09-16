@@ -13,7 +13,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 public class AvatarVO {
-
     /**
      * 头像永久访问 URL（OSS 公共读）
      * 只负责校验+存储+返回 URL，不落库；
