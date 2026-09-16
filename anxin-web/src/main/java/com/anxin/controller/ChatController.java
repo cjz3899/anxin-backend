@@ -6,15 +6,13 @@ import com.anxin.service.IChatService;
 import com.anxin.vo.ChatSessionVO;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * 文档问答：会话与消息接口
  */
-@RestController("/api")
+@RestController
+@RequestMapping("/api")
 public class ChatController {
     @Resource
     private IChatService chatService;
