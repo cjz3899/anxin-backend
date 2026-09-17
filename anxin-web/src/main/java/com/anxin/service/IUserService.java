@@ -21,6 +21,11 @@ public interface IUserService extends IService<User> {
     UserVO profile(ProfileDTO dto);
 
     /**
+     * 查询当前登录用户资料（id/nickname/avatar），供前端“我的”页回显
+     */
+    UserVO me();
+
+    /**
      * 头像上传：校验大小（≤2MB）、真实类型（微信规范白名单 BMP/JPEG/JPG/GIF/PNG）与内容安全，
      * 通过后存储到 OSS 并返回永久 URL（本方法不落库，由 /api/user/profile 一并持久化）
      */

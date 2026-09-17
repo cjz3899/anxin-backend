@@ -26,6 +26,14 @@ public class UserController {
     @Resource
     private TokenService tokenService;
 
+    /**
+     * 查询当前登录用户资料（需登录态 token），供“我的”页回显昵称与头像
+     */
+    @GetMapping("/me")
+    public Result<UserVO> me() {
+        return Result.success(userService.me());
+    }
+
     @PostMapping("/profile")
     public Result<UserVO> profile(@Valid @RequestBody ProfileDTO dto) {
         return Result.success(userService.profile(dto));
@@ -33,8 +41,8 @@ public class UserController {
 
     /**
      * 头像上传（multipart 字段名 file，需登录态 token）：
-     * 校验 ≤2MB / 格式白名单 / 微信内容安全 → 存 OSS → 返回永久 URL。
-     * URL 不在此落库，由前端连同昵称一起 POST /api/user/profile 持久化。
+     * 校验 ≤2MB / 格式白名单 / 微信内容安全 → 存 OSS → 返回永久 URL
+     * URL 不在此落库，由前端连同昵称一起 POST /api/user/profile 持久化
      */
     @PostMapping("/avatar")
     public Result<AvatarVO> avatar(@RequestParam("file") MultipartFile file) {
