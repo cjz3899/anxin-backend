@@ -82,6 +82,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
+    public UserVO me() {
+        User user = getById(BaseContext.getCurrentId());
+        if (user == null) {
+            throw new ServiceException(ResultCode.USER_NOT_EXIST);
+        }
+        return UserVO.builder()
+                .id(user.getId())
+                .nickname(user.getNickname())
+                .avatar(user.getAvatar())
+                .build();
+    }
+
+    @Override
     public UserVO profile(ProfileDTO dto) {
         Long userId = BaseContext.getCurrentId();
         User user = updateProfile(userId, dto.getNickname(), dto.getAvatar());
