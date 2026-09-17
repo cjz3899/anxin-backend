@@ -21,7 +21,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/user/**",
                         "/api/document/**",
                         "/api/analysis/**",
-                        "/api/chat/**")
+                        "/api/chat/**",
+                        "/api/documents/**",
+                        "/api/chat-sessions/**")
                 .excludePathPatterns("/api/user/login", "/api/user/refresh");
         // TODO 添加其他拦截器配置
     }

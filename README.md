@@ -4,22 +4,31 @@
 
 ### 模块结构
 
-| 模块 | 说明 |
-|------|------|
-| `anxin-common` | 公共组件：统一响应 `Result`、错误码、JWT 工具、异常、ThreadLocal 上下文 |
-| `anxin-ai` | LLM 能力：`RiskAnalyzer`/`LlmRiskAnalyzer`（Spring AI ChatClient）风险分析 |
-| `anxin-document/anxin-document-parser` | 文档解析：Tika 抽取全文 + 条款切分（`TikaDocumentParser`、`SectionSplitter`） |
-| `anxin-document/anxin-document-ocr` | OCR：PaddleOCR 本地 ONNX 推理（`OcrService`/`PaddleOcrService`） |
-| `anxin-rag/anxin-rag-core`、`anxin-rag-vector` | RAG 预留模块（暂为空壳，问答规划见 §5.3） |
-| `anxin-web` | 唯一启动模块：Controller / Service / Mapper / RocketMQ 消息层 |
+| 模块                                           | 说明                                                                          |
+|------------------------------------------------|-------------------------------------------------------------------------------|
+| `anxin-common`                                 | 公共组件：统一响应 `Result`、错误码、JWT 工具、异常、ThreadLocal 上下文       |
+| `anxin-ai`                                     | LLM 能力：`RiskAnalyzer`/`LlmRiskAnalyzer`（Spring AI ChatClient）风险分析    |
+| `anxin-document/anxin-document-parser`         | 文档解析：Tika 抽取全文 + 条款切分（`TikaDocumentParser`、`SectionSplitter`） |
+| `anxin-document/anxin-document-ocr`            | OCR：PaddleOCR 本地 ONNX 推理（`OcrService`/`PaddleOcrService`）              |
+| `anxin-rag/anxin-rag-core`、`anxin-rag-vector` | RAG 预留模块（暂为空壳，问答规划见 §5.3）                                     |
+| `anxin-web`                                    | 唯一启动模块：Controller / Service / Mapper / RocketMQ 消息层                 |
 
 ### 技术栈
 
-Java 17、Spring Boot 3.5.4、Spring AI 1.1.8（OpenAI 兼容接口）、RocketMQ 2.3.3、MyBatis-Plus 3.5.7、Apache Tika 3.2.2、PaddleOCR（ONNX Runtime 1.19.0）、阿里云 OSS、MySQL、Redis、jjwt 0.12.6、Hutool 5.8.40。
+Java 17、Spring Boot 3.5.4、Spring AI 1.1.8（OpenAI 兼容接口）、RocketMQ 2.3.3、MyBatis-Plus 3.5.7、Apache Tika
+3.2.2、PaddleOCR（ONNX Runtime 1.19.0）、阿里云 OSS、MySQL、Redis、jjwt 0.12.6、Hutool 5.8.40。
 
 ### 本地运行依赖
 
-MySQL 8、Redis、RocketMQ（NameServer 9876 + Broker）、阿里云 OSS（bucket 需公共读）、微信小程序 appid/secret、OpenAI 兼容 LLM API（配置键 `anxin.ai.openai.*`）。
+MySQL 8、Redis、RocketMQ（NameServer 9876 + Broker）、阿里云 OSS（bucket 需公共读）、微信小程序 appid/secret、OpenAI 兼容 LLM
+API（配置键 `anxin.ai.openai.*`）。
+
+### 相关文档（docs/）
+
+| 文档                       | 内容                                          |
+|----------------------------|-----------------------------------------------|
+| `docs/规划接口实现指南.md` | 各接口的详细实现指南（含参考代码）、踩坑记录  |
+| `docs/RAG方案.md`          | 业界 RAG 架构、本项目现状盘点与分阶段落地路线 |
 
 ## 1. 接口约定
 
@@ -38,12 +47,13 @@ MySQL 8、Redis、RocketMQ（NameServer 9876 + Broker）、阿里云 OSS（bucke
 
 已实现的鉴权方式为双 Token：
 
-| Token          | 用途               | 默认有效期 | 请求携带方式         |
-|----------------|--------------------|------------|----------------------|
-| `accessToken`  | 访问需要登录的接口 | 2 小时     | 请求头 `token`       |
-| `refreshToken` | 刷新登录状态       | 7 天       | 放在刷新接口请求体中 |
+| Token          | 用途               | 默认有效期 | 请求携带方式                                                  |
+|----------------|--------------------|------------|---------------------------------------------------------------|
+| `accessToken`  | 访问需要登录的接口 | 2 小时     | 请求头 `authorization`（值为原始 Token，不加 `Bearer ` 前缀） |
+| `refreshToken` | 刷新登录状态       | 7 天       | 放在刷新接口请求体中                                          |
 
-登录和刷新 Token 接口不需要携带 `accessToken`；完善资料、头像上传、退出登录以及文件上传接口必须携带有效的 `accessToken`。
+登录和刷新 Token 接口不需要携带 `accessToken`；其余所有业务接口（用户资料、头像、文件管理、分析任务、风险报告、问答）都必须携带有效的
+`accessToken`。
 
 刷新成功后，服务端会重新签发一对 Token，并覆盖 Redis 中该用户原有的 Token。客户端必须同时保存并替换新的 `accessToken` 和
 `refreshToken`。
@@ -52,9 +62,12 @@ MySQL 8、Redis、RocketMQ（NameServer 9876 + Broker）、阿里云 OSS（bucke
 
 ```javascript
 headers: {
-    token: wx.getStorageSync('accessToken')
+    authorization: wx.getStorageSync('accessToken')
 }
 ```
+
+> 说明：鉴权请求头名称为 `authorization`，但 **值直接放 accessToken 原文**（后端不做 `Bearer ` 前缀解析）。
+> 若前端统一使用 `Bearer <token>` 形式，需要同步修改 `JwtTokenUserInterceptor`。
 
 ### 1.3 统一响应结构
 
@@ -90,24 +103,26 @@ headers: {
 
 业务错误码：
 
-|  `code` | 常量                      | 含义                         |
-|--------:|---------------------------|------------------------------|
-| `10001` | `USER_NOT_EXIST`          | 用户不存在                   |
-| `10002` | `WECHAT_AUTH_FAILED`      | 微信登录失败                 |
-| `10003` | `PARAM_ERROR`             | 参数校验失败                 |
-| `10004` | `SYSTEM_ERROR`            | 系统错误，请稍后重试         |
-| `10005` | `LOGIN_EXPIRED`           | 登录已过期，请重新登录       |
-| `10006` | `FILE_TYPE_NOT_SUPPORTED` | 不支持的文件类型             |
-| `10007` | `FILE_SIZE_EXCEEDED`      | 文件大小超出限制             |
-| `10008` | `CONTENT_VIOLATION`       | 内容违规，请勿上传           |
-| `10009` | `WECHAT_SECURITY_ERROR`   | 内容安全校验失败，请稍后重试 |
-| `10010` | `FILE_SAVE_FAILED`        | 文件保存失败                 |
-| `10011` | `FILE_DOWNLOAD_FAILED`      | 文件下载失败，请检查文件是否存在或权限配置 |
-| `10012` | `FILE_DOWNLOAD_IO_ERROR`    | 文件下载IO异常，请检查网络或磁盘后重试     |
-| `10013` | `FILE_DOWNLOAD_INTERRUPTED` | 下载被中断                                 |
-| `10014` | `ANALYSIS_TASK_NOT_FOUND`   | 分析任务不存在                             |
-| `10015` | `ANALYSIS_NOT_COMPLETED`    | 分析尚未完成，请先轮询任务状态             |
-| `10016` | `ANALYSIS_RESULT_MISSING`   | 分析结果缺失                               |
+|  `code` | 常量                        | 含义                                             |
+|--------:|-----------------------------|--------------------------------------------------|
+| `10001` | `USER_NOT_EXIST`            | 用户不存在                                       |
+| `10002` | `WECHAT_AUTH_FAILED`        | 微信登录失败                                     |
+| `10003` | `PARAM_ERROR`               | 参数校验失败                                     |
+| `10004` | `SYSTEM_ERROR`              | 系统错误，请稍后重试                             |
+| `10005` | `LOGIN_EXPIRED`             | 登录已过期，请重新登录                           |
+| `10006` | `FILE_TYPE_NOT_SUPPORTED`   | 不支持的文件类型                                 |
+| `10007` | `FILE_SIZE_EXCEEDED`        | 文件大小超出限制                                 |
+| `10008` | `CONTENT_VIOLATION`         | 内容违规，请勿上传                               |
+| `10009` | `WECHAT_SECURITY_ERROR`     | 内容安全校验失败，请稍后重试                     |
+| `10010` | `FILE_SAVE_FAILED`          | 文件保存失败                                     |
+| `10011` | `FILE_DOWNLOAD_FAILED`      | 文件下载失败，请检查文件是否存在或权限配置       |
+| `10012` | `FILE_DOWNLOAD_IO_ERROR`    | 文件下载IO异常，请检查网络或磁盘后重试           |
+| `10013` | `FILE_DOWNLOAD_INTERRUPTED` | 下载被中断                                       |
+| `10014` | `ANALYSIS_TASK_NOT_FOUND`   | 分析任务不存在                                   |
+| `10015` | `ANALYSIS_NOT_COMPLETED`    | 分析尚未完成，请先轮询任务状态                   |
+| `10016` | `ANALYSIS_RESULT_MISSING`   | 分析结果缺失                                     |
+| `10017` | `DOCUMENT_NOT_EXIST`        | 文档不存在（含非本人文档，避免暴露资源是否存在） |
+| `10018` | `RISK_DETAIL_NOT_EXIST`     | 风险详情不存在                                   |
 
 客户端应同时依据 HTTP 状态和响应中的 `code`、`msg` 处理异常。
 
@@ -162,16 +177,21 @@ POST /api/user/login
 
 ## 3. 已实现接口
 
-| 接口                   | 方法   | 是否鉴权 | 说明                                           |
-|------------------------|--------|----------|------------------------------------------------|
-| `/api/user/login`      | `POST` | 否       | 微信小程序登录，首次登录自动创建用户           |
-| `/api/user/refresh`    | `POST` | 否       | 使用刷新 Token 获取新 Token 对                 |
-| `/api/user/profile`    | `POST` | 是       | 更新并返回当前用户资料                         |
-| `/api/user/avatar`     | `POST` | 是       | 上传头像：校验后存 OSS，返回永久 URL（不落库） |
-| `/api/user/logout`     | `POST` | 是       | 删除当前用户在 Redis 中的登录 Token            |
-| `/api/document/upload` | `POST` | 是       | 上传 PDF/Word/图片并创建分析任务               |
-| `/api/analysis/task/{taskId}`       | `GET`  | 是       | 查询异步分析任务状态（客户端轮询）             |
-| `/api/analysis/report/{documentId}` | `GET`  | 是       | 查询文件风险报告                               |
+| 接口                                        | 方法     | 是否鉴权 | 说明                                           |
+|---------------------------------------------|----------|----------|------------------------------------------------|
+| `/api/user/login`                           | `POST`   | 否       | 微信小程序登录，首次登录自动创建用户           |
+| `/api/user/refresh`                         | `POST`   | 否       | 使用刷新 Token 获取新 Token 对                 |
+| `/api/user/profile`                         | `POST`   | 是       | 更新并返回当前用户资料                         |
+| `/api/user/avatar`                          | `POST`   | 是       | 上传头像：校验后存 OSS，返回永久 URL（不落库） |
+| `/api/user/logout`                          | `POST`   | 是       | 删除当前用户在 Redis 中的登录 Token            |
+| `/api/document/upload`                      | `POST`   | 是       | 上传 PDF/Word/图片并创建分析任务               |
+| `/api/document/list`                        | `GET`    | 是       | 我的文件列表（**游标分页**，支持状态分组筛选） |
+| `/api/document/{documentId}`                | `GET`    | 是       | 文件详情（含最新任务状态与风险等级）           |
+| `/api/document/{documentId}`                | `DELETE` | 是       | 删除文件（物理级联删除 + 删除 OSS 对象）       |
+| `/api/document/{documentId}/reanalyze`      | `POST`   | 是       | 对已有文件重新发起分析                         |
+| `/api/document/{documentId}/risks/{riskId}` | `GET`    | 是       | 查询单条风险详情（含条款溯源信息）             |
+| `/api/analysis/task/{taskId}`               | `GET`    | 是       | 查询异步分析任务状态（客户端轮询）             |
+| `/api/analysis/report/{documentId}`         | `GET`    | 是       | 查询文件风险报告                               |
 
 ### 3.1 微信小程序登录
 
@@ -282,7 +302,7 @@ Content-Type: application/json
 
 - 接口：`POST /api/user/profile`
 - 鉴权：需要
-- 请求头：`token: <accessToken>`
+- 请求头：`authorization: <accessToken>`
 - 业务说明：更新当前登录用户的昵称和头像，并返回更新后的用户信息。
 
 #### 请求参数
@@ -298,7 +318,7 @@ Content-Type: application/json
 POST /api/user/profile HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
-token: eyJhbGciOiJIUzI1NiJ9...
+authorization: eyJhbGciOiJIUzI1NiJ9...
 
 {
   "nickname": "安心用户",
@@ -340,7 +360,7 @@ token: eyJhbGciOiJIUzI1NiJ9...
 
 - 接口：`POST /api/user/logout`
 - 鉴权：需要
-- 请求头：`token: <accessToken>`
+- 请求头：`authorization: <accessToken>`
 - 请求体：无
 
 请求示例：
@@ -348,7 +368,7 @@ token: eyJhbGciOiJIUzI1NiJ9...
 ```http
 POST /api/user/logout HTTP/1.1
 Host: localhost:8080
-token: eyJhbGciOiJIUzI1NiJ9...
+authorization: eyJhbGciOiJIUzI1NiJ9...
 ```
 
 成功响应：
@@ -388,7 +408,7 @@ token: eyJhbGciOiJIUzI1NiJ9...
 POST /api/user/avatar HTTP/1.1
 Host: localhost:8080
 Content-Type: multipart/form-data
-token: eyJhbGciOiJIUzI1NiJ9...
+authorization: eyJhbGciOiJIUzI1NiJ9...
 
 file=<二进制图片>
 ```
@@ -424,7 +444,7 @@ wx.uploadFile({
     filePath: tempFilePath,
     name: 'file',
     header: {
-        token: wx.getStorageSync('accessToken')
+        authorization: wx.getStorageSync('accessToken')
     },
     success(response) {
         const result = JSON.parse(response.data)
@@ -467,7 +487,7 @@ wx.uploadFile({
 POST /api/document/upload HTTP/1.1
 Host: localhost:8080
 Content-Type: multipart/form-data
-token: eyJhbGciOiJIUzI1NiJ9...
+authorization: eyJhbGciOiJIUzI1NiJ9...
 
 file=<二进制文件>
 ```
@@ -512,7 +532,7 @@ file=<二进制文件>
 
 - 接口：`GET /api/analysis/task/{taskId}`
 - 鉴权：需要
-- 请求头：`token: <accessToken>`
+- 请求头：`authorization: <accessToken>`
 - 业务说明：客户端每 2 秒轮询一次，拿到 `SUCCESS` 或 `FAILED` 后停止轮询。
 
 请求示例：
@@ -520,7 +540,7 @@ file=<二进制文件>
 ```http
 GET /api/analysis/task/20001 HTTP/1.1
 Host: localhost:8080
-token: eyJhbGciOiJIUzI1NiJ9...
+authorization: eyJhbGciOiJIUzI1NiJ9...
 ```
 
 成功响应：
@@ -542,16 +562,16 @@ token: eyJhbGciOiJIUzI1NiJ9...
 }
 ```
 
-| `data` 字段    | 类型                | 说明                                                                 |
-|----------------|---------------------|----------------------------------------------------------------------|
-| `taskId`       | `String`            | 任务 ID                                                              |
-| `documentId`   | `String`            | 文件 ID                                                              |
-| `taskType`     | `String`            | 任务类型，当前固定 `RISK_ANALYSIS`                                   |
-| `status`       | `String`            | `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`（见 §6.2）           |
-| `retryCount`   | `Integer`           | 已重试次数                                                           |
-| `errorMessage` | `String` 或 `null`  | 失败原因，`FAILED` 时有值（如"未解析到有效条款内容，请重新上传"）    |
-| `startedTime`  | `String` 或 `null`  | 开始时间，格式 `yyyy-MM-dd HH:mm:ss`                                 |
-| `finishedTime` | `String` 或 `null`  | 完成时间                                                             |
+| `data` 字段    | 类型               | 说明                                                              |
+|----------------|--------------------|-------------------------------------------------------------------|
+| `taskId`       | `String`           | 任务 ID                                                           |
+| `documentId`   | `String`           | 文件 ID                                                           |
+| `taskType`     | `String`           | 任务类型，当前固定 `RISK_ANALYSIS`                                |
+| `status`       | `String`           | `PENDING` / `PROCESSING` / `SUCCESS` / `FAILED`（见 §6.2）        |
+| `retryCount`   | `Integer`          | 已重试次数                                                        |
+| `errorMessage` | `String` 或 `null` | 失败原因，`FAILED` 时有值（如"未解析到有效条款内容，请重新上传"） |
+| `startedTime`  | `String` 或 `null` | 开始时间，格式 `yyyy-MM-dd HH:mm:ss`                              |
+| `finishedTime` | `String` 或 `null` | 完成时间                                                          |
 
 失败场景：任务不存在返回 `10014 分析任务不存在`。
 
@@ -561,7 +581,7 @@ token: eyJhbGciOiJIUzI1NiJ9...
 
 - 接口：`GET /api/analysis/report/{documentId}`
 - 鉴权：需要
-- 请求头：`token: <accessToken>`
+- 请求头：`authorization: <accessToken>`
 - 业务说明：分析任务 `SUCCESS` 后调用，返回整体摘要、风险计数与风险明细（明细含原文引用，供前端溯源）。
 
 请求示例：
@@ -569,7 +589,7 @@ token: eyJhbGciOiJIUzI1NiJ9...
 ```http
 GET /api/analysis/report/10001 HTTP/1.1
 Host: localhost:8080
-token: eyJhbGciOiJIUzI1NiJ9...
+authorization: eyJhbGciOiJIUzI1NiJ9...
 ```
 
 成功响应：
@@ -606,17 +626,220 @@ token: eyJhbGciOiJIUzI1NiJ9...
 }
 ```
 
-| `data` 字段                                  | 类型              | 说明                                     |
-|----------------------------------------------|-------------------|------------------------------------------|
-| `documentId` / `taskId`                      | `String`          | 文件 / 任务 ID                           |
-| `fileName` / `fileType` / `fileSize`         | `String`/`Integer`| 文件基本信息                             |
-| `startedTime` / `finishedTime`               | `String`          | 分析起止时间                             |
-| `riskSummary`                                | `String`          | 整体风险摘要                             |
-| `riskLevel`                                  | `String`          | 整体风险等级 `HIGH/MEDIUM/LOW`（服务端由各级数量推导，各级数量不返回前端） |
-| `riskCount`                                  | `Integer`         | 共发现的风险问题数量                     |
-| `risks`                                      | `Array`           | 风险明细，`riskLevel` 口径见 §6.3        |
+| `data` 字段                          | 类型               | 说明                                                                       |
+|--------------------------------------|--------------------|----------------------------------------------------------------------------|
+| `documentId` / `taskId`              | `String`           | 文件 / 任务 ID                                                             |
+| `fileName` / `fileType` / `fileSize` | `String`/`Integer` | 文件基本信息                                                               |
+| `startedTime` / `finishedTime`       | `String`           | 分析起止时间                                                               |
+| `riskSummary`                        | `String`           | 整体风险摘要                                                               |
+| `riskLevel`                          | `String`           | 整体风险等级 `HIGH/MEDIUM/LOW`（服务端由各级数量推导，各级数量不返回前端） |
+| `riskCount`                          | `Integer`          | 共发现的风险问题数量                                                       |
+| `risks`                              | `Array`            | 风险明细，`riskLevel` 口径见 §6.3                                          |
 
 失败场景：任务不存在 `10014`；分析尚未完成 `10015`；结果缺失 `10016`。
+
+### 3.9 我的文件列表（游标分页）
+
+#### 基本信息
+
+- 接口：`GET /api/document/list`
+- 鉴权：需要
+- 请求头：`authorization: <accessToken>`
+- 业务说明：查询 **当前用户**的文件（对应「我的文件」页），支持按状态分组的 Tab 筛选。
+
+#### 请求参数
+
+| 参数名        | 类型      | 必填 | 说明                                                                   |
+|---------------|-----------|------|------------------------------------------------------------------------|
+| `pageSize`    | `Integer` | 否   | 每页条数，默认 `5`，最大 `10`                                          |
+| `statusGroup` | `String`  | 否   | `ALL`（默认）/ `PROCESSING` / `SUCCESS` / `FAILED`，非法值返回 `10003` |
+| `cursor`      | `String`  | 否   | **游标**：首页不传；下一页传上一页响应里的 `nextCursor`                |
+
+#### 游标分页约定（本项目所有列表接口统一）
+
+响应返回 `nextCursor`（本页最后一条的 `id`），客户端滚动到底部时带上它请求下一页；`nextCursor` 为 `null` 表示没有更多数据。
+**切换 Tab 时必须重置 `cursor`（不传）重新从第一页加载。**
+
+选择游标而非 `page/pageSize` 的原因：列表只有"滚动加载"、没有页码跳转；游标分页在翻页期间有并发新增/删除时
+**不会出现重复行或漏行**，
+且深翻页无性能退化。
+
+`statusGroup` 的分组语义（注意 `PROCESSING` 覆盖两个状态）：
+
+| 分组值       | 等价 SQL 条件      | 对应 Tab |
+|--------------|--------------------|----------|
+| `ALL`        | 无条件             | 全部     |
+| `PROCESSING` | `status IN (0, 1)` | 分析中   |
+| `SUCCESS`    | `status = 2`       | 已完成   |
+| `FAILED`     | `status = 3`       | 失败     |
+
+#### 请求示例
+
+```http
+GET /api/document/list?pageSize=5&statusGroup=ALL HTTP/1.1
+Host: localhost:8080
+authorization: eyJhbGciOiJIUzI1NiJ9...
+
+# 下一页
+GET /api/document/list?pageSize=5&statusGroup=ALL&cursor=9003
+```
+
+#### 成功响应
+
+```json
+{
+  "code": 1,
+  "msg": "操作成功",
+  "data": {
+    "records": [
+      {
+        "id": "9004",
+        "fileName": "租赁合同.pdf",
+        "fileType": "PDF",
+        "fileSize": 204800,
+        "status": "SUCCESS",
+        "summary": "文件存在较高风险条款，建议重点核查违约责任。",
+        "riskLevel": "HIGH",
+        "createdTime": "2026-09-15 14:37:05",
+        "updatedTime": "2026-09-15 14:37:22"
+      }
+    ],
+    "nextCursor": "9003",
+    "total": 12
+  }
+}
+```
+
+| 字段                  | 类型               | 说明                                                                            |
+|-----------------------|--------------------|---------------------------------------------------------------------------------|
+| `records`             | `Array`            | 当前页文件列表                                                                  |
+| `nextCursor`          | `String` 或 `null` | 下一页游标；`null` 表示已到底                                                   |
+| `total`               | `Long`             | 该 Tab 下的总条数（不受游标影响，可用于 Tab 计数展示）                          |
+| `records[].id`        | `String`           | 文件 ID                                                                         |
+| `records[].riskLevel` | `String` 或 `null` | 整体风险等级 `HIGH/MEDIUM/LOW`；`null` 表示暂无分析结果（卡片可显示「已完成」） |
+
+> `riskLevel` 由服务端按高/中/低风险数量推导（高>0→HIGH，否则中>0→MEDIUM，否则 LOW）， **各级数量不下发前端**。
+
+### 3.10 文件详情
+
+#### 基本信息
+
+- 接口：`GET /api/document/{documentId}`
+- 鉴权：需要
+- 业务说明：文件详情聚合视图，用于详情页根据分析状态渲染不同操作（成功→查看报告、处理中→继续轮询、失败→展示原因并提供重新分析）。
+
+#### 成功响应
+
+```json
+{
+  "code": 1,
+  "msg": "操作成功",
+  "data": {
+    "id": "9003",
+    "fileName": "t1.pdf",
+    "fileType": "PDF",
+    "fileSize": 200,
+    "status": "FAILED",
+    "summary": null,
+    "riskLevel": null,
+    "latestTaskId": "11",
+    "taskStatus": "FAILED",
+    "errorMessage": "未解析到有效条款内容，请重新上传",
+    "createdTime": "2026-09-15 14:37:05",
+    "updatedTime": "2026-09-15 14:37:22"
+  }
+}
+```
+
+| 字段           | 类型               | 说明                                                              |
+|----------------|--------------------|-------------------------------------------------------------------|
+| `status`       | `String`           | 文件状态（见 §6.2）                                               |
+| `riskLevel`    | `String` 或 `null` | 整体风险等级，无分析结果时为 `null`                               |
+| `latestTaskId` | `String` 或 `null` | 最新分析任务 ID，可用于恢复轮询 `GET /api/analysis/task/{taskId}` |
+| `taskStatus`   | `String` 或 `null` | 最新任务状态                                                      |
+| `errorMessage` | `String` 或 `null` | 失败原因（仅 `FAILED` 时有值），直接展示给用户                    |
+
+失败场景：文件不存在或非本人 → `10017`。
+
+### 3.11 删除文件
+
+#### 基本信息
+
+- 接口：`DELETE /api/document/{documentId}`
+- 鉴权：需要
+- 业务说明： **物理删除**。删除该文件的 `analysis_task`、`risk_result`、`risk_detail`、`document_section` 记录，删除
+  `document` 主记录，并删除 OSS 上的文件对象；不可恢复。
+
+响应：`{"code":1,"msg":"操作成功","data":null}`
+
+失败场景：文件不存在或非本人 → `10017`。
+
+> 说明：删除时会先清 `analysis_task`，因此若该文件的分析消息仍在队列中，消费者随后抢占状态会失败（影响 0 行）而直接跳过，
+> 不会"复活"已删除的数据。OSS 对象删除失败只记录告警、不影响数据库清理结果。
+
+### 3.12 重新分析
+
+#### 基本信息
+
+- 接口：`POST /api/document/{documentId}/reanalyze`
+- 鉴权：需要
+- 请求体：无
+- 业务说明：对已有文件重新发起分析，创建 **新的** `analysis_task` 并投递消息；消费端会先按文件维度清理旧结果再重新写入。
+  适用于分析失败（`FAILED`）后重试——自动重试已穷尽，需用户主动触发。
+
+#### 成功响应
+
+```json
+{
+  "code": 1,
+  "msg": "重新分析任务已创建",
+  "data": {
+    "documentId": "9003",
+    "taskId": "13",
+    "status": "PENDING"
+  }
+}
+```
+
+失败场景：
+
+| 场景                 | 响应                                          |
+|----------------------|-----------------------------------------------|
+| 文件不存在或非本人   | `文档不存在`（`10017`）                       |
+| 已有进行中的分析任务 | `已有进行中的分析任务，请稍后再试`（`10003`） |
+
+### 3.13 单条风险详情
+
+#### 基本信息
+
+- 接口：`GET /api/document/{documentId}/risks/{riskId}`
+- 鉴权：需要
+- 业务说明：查询单条风险明细（对应「风险报告详情」页），相比报告接口额外返回 **条款溯源信息**（条款编号/标题），
+  用于展示该风险对应的是文档哪一条；页脚「上一条/下一条」由前端用报告接口返回的 `risks` 数组做相邻跳转，无需额外接口。
+
+#### 成功响应
+
+```json
+{
+  "code": 1,
+  "msg": "操作成功",
+  "data": {
+    "id": "30001",
+    "sectionId": "40001",
+    "sectionNo": "第15条",
+    "sectionTitle": "违约责任",
+    "riskType": "违约责任",
+    "riskLevel": "HIGH",
+    "title": "提前解约责任过重",
+    "originalText": "乙方提前解除合同，应支付剩余租期全部租金……",
+    "reason": "该条款可能导致用户在提前解除合同时承担较高经济责任。",
+    "impact": "可能增加提前解约成本。",
+    "suggestion": "重点确认提前解除条件及违约责任。"
+  }
+}
+```
+
+失败场景：文件不存在或非本人 → `10017`；风险详情不存在或不属于该文件 → `10018`。
 
 ## 4. 小程序调用示例
 
@@ -655,7 +878,7 @@ wx.request({
     method: 'POST',
     header: {
         'content-type': 'application/json',
-        token: wx.getStorageSync('accessToken')
+        authorization: wx.getStorageSync('accessToken')
     },
     data: {
         nickname: '安心用户'
@@ -665,78 +888,46 @@ wx.request({
 
 ## 5. 规划中接口
 
-以下接口按照需求文档中的“文件管理、风险报告、RAG 问答和历史记录”整理。分析任务轮询与风险报告已实现并移入 §3.7、§3.8；单条风险详情、文件管理与 RAG 问答尚未实现对应 Controller。路径和字段可在开发时继续确认，但建议沿用本文档的统一响应结构和 Token 鉴权方式。
+以下接口按需求文档中的「RAG 问答与历史记录」整理。文件管理（列表/详情/删除/重新分析，见 §3.9~§3.12）、分析任务轮询
+（§3.7）、风险报告（§3.8）、单条风险详情（§3.13）均已实现并移入 §3；本节的问答接口 **部分实现中**（仅"创建会话"已落地）。
+路径与字段可继续确认，但建议沿用本文档的统一响应结构与鉴权方式。
 
-### 5.1 文件管理
+### 5.1 RAG / Agent 智能问答（轻量 RAG）
 
-| 接口                                   | 方法     | 鉴权 | 说明                             | 状态   |
-|----------------------------------------|----------|------|----------------------------------|--------|
-| `/api/document/list`                   | `GET`    | 是   | 查询当前用户的文件和历史分析记录 | 规划中 |
-| `/api/document/{documentId}`           | `GET`    | 是   | 查询文件详情                     | 规划中 |
-| `/api/document/{documentId}`           | `DELETE` | 是   | 删除当前用户的文件               | 规划中 |
-| `/api/document/{documentId}/reanalyze` | `POST`   | 是   | 对已有文件重新发起分析           | 规划中 |
+> **当前进度**：会话创建与列表已落地（`IChatService.createSession` / `listSessions`）；提问、历史消息、关闭会话待实现。
+> 实体与表已就绪：`chat_session`、`chat_message`（`ChatSession`/`ChatMessage` + Mapper）；DTO/VO 已定义。
+>
+> **⚠️ 鉴权注意（实现时必须做）**：本节路径使用 `/api/documents/**`（复数）与 `/api/chat-sessions/**`，
+> **不在现有拦截器覆盖范围内**——`WebMvcConfig` 当前只匹配 `/api/user/**`、`/api/document/**`、`/api/analysis/**`、`/api/chat/**`。
+> 不补充会导致这两个控制器**完全未鉴权**，且 `BaseContext.getCurrentId()` 为空使归属校验失效。需追加：
+>
+> ```java
+> .addPathPatterns("/api/user/**", "/api/document/**", "/api/analysis/**", "/api/chat/**",
+>         "/api/documents/**", "/api/chat-sessions/**")
+> ```
+>
+> **参数校验（已实测确认）**：控制器使用 `@Validated` + `@Positive` 校验路径变量。注意**类级 `@Validated` 走的是 AOP 方法校验**
+> （`MethodValidationPostProcessor`），抛的是 `jakarta.validation.ConstraintViolationException`；而**没有类级 `@Validated`** 时
+> 走 Spring 6.1+ 内置的控制器方法校验，抛 `HandlerMethodValidationException`——两者是不同路径。`WebExceptionAdvice`
+> 已分别补上分支返回 `10003`（否则会落到 `Throwable` 分支返回 `10004`）。实测：`documentId=-1` → `10003 必须是正数`。
 
-#### 文件列表
+| 接口                                            | 方法    | 鉴权 | 说明                             | 状态     |
+|-------------------------------------------------|---------|------|----------------------------------|----------|
+| `/api/documents/{documentId}/chat-sessions`     | `POST`  | 是   | 创建文件问答会话                 | 已实现   |
+| `/api/documents/{documentId}/chat-sessions`     | `GET`   | 是   | 查询文件的问答会话列表（分页）   | 已实现   |
+| `/api/chat-sessions/{sessionId}/messages`       | `POST`  | 是   | 基于当前文件提问                 | 规划中   |
+| `/api/chat-sessions/{sessionId}/messages`       | `GET`   | 是   | 查询历史消息                     | 规划中   |
+| `/api/chat-sessions/{sessionId}`                | `PATCH` | 是   | 关闭问答会话（`status` 置 0）    | 规划中   |
 
-建议请求：
+列表接口参数：`page`（默认 1）、`size`（默认 20），返回 `PageResult<ChatSessionVO>`。
 
-```http
-GET /api/document/list?page=1&pageSize=10&status=ALL HTTP/1.1
-Host: localhost:8080
-token: eyJhbGciOiJIUzI1NiJ9...
-```
-
-建议返回字段：
-
-| 字段          | 类型     | 说明                                 |
-|---------------|----------|--------------------------------------|
-| `id`          | `String` | 文件 ID                              |
-| `fileName`    | `String` | 原始文件名                           |
-| `fileType`    | `String` | `PDF`、`DOC`、`DOCX` 或 `IMAGE`      |
-| `fileSize`    | `Long`   | 文件大小，单位 Byte                  |
-| `status`      | `String` | 文件处理状态                         |
-| `summary`     | `String` | 风险摘要                             |
-| `createdTime` | `String` | 创建时间，格式 `yyyy-MM-dd HH:mm:ss` |
-| `updatedTime` | `String` | 更新时间                             |
-
-### 5.2 风险报告-单条风险详情
-
-| 接口                                        | 方法  | 鉴权 | 说明             | 状态   |
-|---------------------------------------------|-------|------|------------------|--------|
-| `/api/document/{documentId}/risks/{riskId}` | `GET` | 是   | 查看单条风险详情 | 规划中 |
-
-报告列表已实现，见 §3.8（路径为 `/api/analysis/report/{documentId}`；规划中的风险评分 riskScore 为需求文档扩展项，本期未实现，后续可基于高/中/低风险数量加权计算）。单条风险详情建议在明细基础上补充条款溯源信息，响应示例：
-
-```json
-{
-  "code": 1,
-  "msg": "操作成功",
-  "data": {
-    "id": "30001",
-    "documentId": "10001",
-    "sectionId": "40001",
-    "sectionNo": "第15条",
-    "sectionTitle": "违约责任",
-    "riskType": "违约责任",
-    "riskLevel": "HIGH",
-    "title": "提前解约责任过重",
-    "originalText": "乙方提前解除合同，应支付剩余租期全部租金……",
-    "reason": "该条款可能导致用户在提前解除合同时承担较高经济责任。",
-    "impact": "可能增加提前解约成本。",
-    "suggestion": "重点确认提前解除条件及违约责任。"
-  }
-}
-```
-
-### 5.3 RAG / Agent 智能问答（轻量 RAG）
-
-| 接口                                       | 方法     | 鉴权 | 说明                   | 状态   |
-|--------------------------------------------|----------|------|------------------------|--------|
-| `/api/document/{documentId}/chat/sessions` | `POST`   | 是   | 创建文件问答会话       | 规划中 |
-| `/api/document/{documentId}/chat/sessions` | `GET`    | 是   | 查询文件的问答会话列表 | 规划中 |
-| `/api/chat/sessions/{sessionId}/messages`  | `POST`   | 是   | 基于当前文件提问       | 规划中 |
-| `/api/chat/sessions/{sessionId}/messages`  | `GET`    | 是   | 查询历史消息           | 规划中 |
-| `/api/chat/sessions/{sessionId}`           | `DELETE` | 是   | 关闭问答会话           | 规划中 |
+> **分页方式说明**：本节采用 `page/size` 页码分页，与项目其他列表接口的**游标分页约定（§6.5）不一致**；
+> 且 `PageResult` 只有 `records/nextCursor/total`，页码分页下 `nextCursor` 恒为 `null`、响应里也不含当前页码。
+> 若要与项目统一，建议改为游标分页；考虑到单文档的会话数量通常很少，也可以直接返回不分页的列表（最简单）。
+>
+> **路径命名说明**：本节用 `/api/documents/**`（复数），而文件相关接口用的是 `/api/document/**`（单数，§3.6~§3.13）——
+> 同一资源出现两种命名。若前端尚未接入，建议统一为 `/api/document/{documentId}/chat-sessions`。`PATCH` 关闭会话
+> （保留会话与历史、只改状态）比 `DELETE` 语义更贴切，本文档已按 PATCH 记录。
 
 创建会话请求示例：
 
@@ -815,33 +1006,62 @@ ID。
 
 风险详情中的 `riskLevel` 使用大写枚举值：`HIGH`、`MEDIUM`、`LOW`。
 
+除了明细行各自的等级，报告接口（§3.8）与文件列表/详情接口还会返回 **整体风险等级** `riskLevel`，由服务端按各级风险数量推导：
+
+| 推导规则            | 结果     |
+|---------------------|----------|
+| 高风险数量 > 0      | `HIGH`   |
+| 否则 中风险数量 > 0 | `MEDIUM` |
+| 否则                | `LOW`    |
+
+**高/中/低风险数量仅作为推导依据，不下发前端**（避免前端重复实现判定口径，改口径只需改服务端一处）。
+
 ### 6.4 时间格式
 
 服务端 Jackson 配置的时间格式为：`yyyy-MM-dd HH:mm:ss`，时区为 `Asia/Shanghai`。
 
+> 注：`spring.jackson.date-format` 只作用于 `java.util.Date`，对 `java.time.LocalDateTime` 无效；项目通过 `JacksonConfig`
+> 显式注册了 `LocalDateTime` 的序列化/反序列化器，因此接口返回的时间字符串不带 ISO 格式的 `T`。
+
+### 6.5 列表分页约定
+
+所有列表接口统一采用 **游标分页**（详见 §3.9）：请求参数为 `pageSize` + 可选 `cursor`，响应为
+`{records, nextCursor, total}`。
+`nextCursor` 为 `null` 表示已到底； **切换筛选条件（Tab）时必须重置 `cursor`**。
+
+不使用 `page/pageSize` 页码分页的原因：列表仅支持滚动加载、无页码跳转；游标分页在翻页期间发生并发新增/删除时不会出现重复行或漏行，
+深翻页也不存在性能退化。
+
 ## 7. 当前实现注意事项
 
-1. `application.yml` 中微信 `appid` 和 `secret` 仍为空占位值。联调前必须在安全的环境配置中填写真实值，不要将 `secret`
-   提交到前端或代码仓库。
+1. 微信 `appid`/`secret` 在 `application.yml` 中为环境变量占位（生产必须注入，不得提交真实值）；本地 `application-dev.yml`
+   已填测试值（该文件在 `.gitignore` 内）。未配置或配置错误时，imgSecCheck 相关接口返回 `10009`。
 2. 登录接口当前没有返回昵称和头像，与需求文档“用户基本信息”的输出要求存在差异。
 3. 当前 `/api/user/profile` 是更新资料接口，不是只读的用户信息查询接口。
-4. 当前鉴权请求头为 `token`；如果前端统一使用 `Authorization`，需要同步修改后端拦截器和本文档。
+4. 鉴权请求头为 **`authorization`**， **值为 accessToken 原文**（后端不做 `Bearer ` 前缀解析）。若前端统一使用
+   `Bearer <token>`，需同步修改 `JwtTokenUserInterceptor` 与本文档。
 5. 上传限制与存储已确定：全局 multipart 上限 12MB；图片 ≤5MB、PDF/Word ≤10MB；文件存储于阿里云 OSS（公共读，
    配置见 `anxin.oss.*` 环境变量），对象名由服务端生成（UUID + Tika 真实后缀），不拼接用户原始文件名。
-6. 微信内容安全依赖真实 `secret`：图片同步审核（imgSecCheck）未配置或失败时返回 `10009`；违规内容（87014）返回
-   `10008`，且不会进入 OSS/数据库（先审核后入库）。
-7. 异步分析链路已完整落地：RocketMQ 投递/消费/30 秒补偿调度、文档解析、LLM 风险分析、结果落库均已实现；微信异步审核
-   （mediaCheckAsync）已从代码中移除，仅保留 ≤4MB 图片的同步 imgSecCheck；图片任务当前仅 OCR 识别、暂不产出风险报告（接入中）。
-   分页参数上限与 AI 接口限流值待定。
+6. 微信内容安全：仅 ≤4MB 图片走同步 imgSecCheck（违规 87014 返回 `10008`，且不会进入 OSS/数据库，先审核后入库）；
+   微信异步审核（mediaCheckAsync）已从代码中移除。
+7. 异步分析链路已完整落地：RocketMQ 投递/消费、30 秒补偿重投、文档解析（Tika）与图片 OCR（PaddleOCR）、LLM 风险分析、
+   结果落库、状态机重试。 **图片与文档已走统一的下游链路**（OCR 文本同样经条款切分 → LLM 分析 → 落 risk_result）。
+   图片任务需先完成 OCR 引擎预热（启动时加载 ONNX 模型，约数秒到数十秒）。
 8. OSS bucket 必须配置为公共读：消费端按 `fileUrl` 匿名拉取文件，私有 ACL 会导致下载 403（任务重试 3 次后 FAILED）；
    小程序展示文件同样依赖公共读。
+9. 分页统一用游标（见 §6.5），不使用 MyBatis-Plus 分页插件，列表 SQL 为手写 XML（
+   `anxin-web/src/main/resources/com/anxin/mapper/`）。
+10. 依赖隐式参数名的新接口（`@RequestParam Integer pageSize`、`@PathVariable Long documentId` 这类 **不显式写名字**的写法）
+    要求编译时开启 `-parameters`；根 pom 的 `maven-compiler-plugin` 已配置 `<parameters>true</parameters>`，移除会导致
+    所有此类接口运行期报错（表现为 `10004`）。
 
 ## 8. 版本记录
 
-| 版本  | 日期       | 说明                                                                                                                         |
-|-------|------------|------------------------------------------------------------------------------------------------------------------------------|
-| 0.1.0 | 2026-09-05 | 初版：整理用户登录相关已实现接口，并补充需求对应的规划接口                                                                   |
-| 0.1.1 | 2026-09-05 | 统一鉴权失败响应格式，并补充业务错误码返回说明                                                                               |
-| 0.1.2 | 2026-09-05 | 移除账号冻结机制：user 表删除 status 字段，错误码重排为连续编号                                                              |
-| 0.1.3 | 2026-09-06 | 新增头像上传（§3.5）与文件上传（§3.6）；OSS 存储与微信内容安全校验落地；分析任务异步链路与状态机落地；错误码补充 10006~10010 |
-| 0.1.4 | 2026-09-11 | 异步链路由线程池替换为 RocketMQ（投递/监听/30 秒补偿调度）；新增分析任务轮询（§3.7）与风险报告接口（§3.8）；新增 anxin-document-ocr（PaddleOCR）；文档解析器合并为 TikaDocumentParser；空解析走非重试分支直接 FAILED；错误码补充 10011~10016 |
+| 版本  | 日期       | 说明                                                                                                                                                                                                                                                                                                                |
+|-------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0.1.0 | 2026-09-05 | 初版：整理用户登录相关已实现接口，并补充需求对应的规划接口                                                                                                                                                                                                                                                          |
+| 0.1.1 | 2026-09-05 | 统一鉴权失败响应格式，并补充业务错误码返回说明                                                                                                                                                                                                                                                                      |
+| 0.1.2 | 2026-09-05 | 移除账号冻结机制：user 表删除 status 字段，错误码重排为连续编号                                                                                                                                                                                                                                                     |
+| 0.1.3 | 2026-09-06 | 新增头像上传（§3.5）与文件上传（§3.6）；OSS 存储与微信内容安全校验落地；分析任务异步链路与状态机落地；错误码补充 10006~10010                                                                                                                                                                                        |
+| 0.1.4 | 2026-09-11 | 异步链路由线程池替换为 RocketMQ（投递/监听/30 秒补偿调度）；新增分析任务轮询（§3.7）与风险报告接口（§3.8）；新增 anxin-document-ocr（PaddleOCR）；文档解析器合并为 TikaDocumentParser；空解析走非重试分支直接 FAILED；错误码补充 10011~10016                                                                        |
+| 0.1.5 | 2026-09-16 | 新增文件管理接口：列表（游标分页 + 状态分组，§3.9）、详情（§3.10）、删除（§3.11）、重新分析（§3.12）与单条风险详情（§3.13）；风险数量不下发、改由服务端推导整体 `riskLevel`（§6.3）；OCR 接入分析链路，图片任务产出真实风险报告；鉴权请求头更正为 `authorization`；统一游标分页约定（§6.5）；错误码补充 10017~10018 |

@@ -10,6 +10,7 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
@@ -44,6 +45,17 @@ public class WebExceptionAdvice {
                 })
                 .collect(Collectors.toList());
         return Result.of(ResultCode.PARAM_ERROR.getCode(), ResultCode.PARAM_ERROR.getMsg(), argumentErrorList);
+    }
+
+    /**
+     * 控制器方法参数校验失败（@PathVariable/@RequestParam 上的 @Positive 等约束）。
+     * Spring 6.1+ 内置方法校验直接处理，无需类级 @Validated；不接这个异常会落到 Throwable 分支返回 10004
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public Result<String> handlerMethodValidationExceptionHandler(
+            HttpServletRequest request, HandlerMethodValidationException ex) {
+        log.error("参数校验异常 method : {} url : {} query : {}", request.getMethod(), getRequestUrl(request), getRequestQuery(request), ex);
+        return Result.error(ResultCode.PARAM_ERROR.getCode(), ResultCode.PARAM_ERROR.getMsg());
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
