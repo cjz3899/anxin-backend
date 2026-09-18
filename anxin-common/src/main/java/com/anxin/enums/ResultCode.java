@@ -41,7 +41,9 @@ public enum ResultCode {
 
     DOCUMENT_NOT_EXIST(10017, "文档不存在"),
 
-    RISK_DETAIL_NOT_EXIST(10018, "风险详情不存在");
+    RISK_DETAIL_NOT_EXIST(10018, "风险详情不存在"),
+
+    ANALYSIS_TASK_CREATE_FAILED(10019, "分析任务创建失败，请稍后重试");
 
 
     private final Integer code;

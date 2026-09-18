@@ -14,10 +14,12 @@ import com.anxin.service.support.FileTypeService;
 import com.anxin.service.support.OssStorageService;
 import com.anxin.service.support.RiskLevelCalculator;
 import com.anxin.threadlocal.BaseContext;
+import com.anxin.util.SnowUtil;
 import com.anxin.vo.DocumentDetailVO;
 import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -113,42 +115,48 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         String key = ossStorageService.upload(bytes, mime, "documents", fileTypeService.realExtOf(mime));
         String fileUrl = ossStorageService.toUrl(key);
 
-        //落库 document（PENDING）
+        //主键由应用侧生成：消息体在投递前就要带上两个 ID，紧贴投递生成以缩短「生成 ID → 落库可见」的窗口
+        long documentId = SnowUtil.nextId();
+        long taskId = SnowUtil.nextId();
         String fileType = fileTypeNameOf(mime);
+        LocalDateTime now = LocalDateTime.now();
+
         Document document = Document.builder()
+                .id(documentId)
                 .userId(BaseContext.getCurrentId())
                 .fileName(truncate(originalName.isBlank() ? "未命名文件" : originalName, 255))
                 .fileType(fileType)
                 .fileSize(size)
                 .fileUrl(fileUrl)
                 .status(TaskStatus.PENDING.getCode())
-                .createdTime(LocalDateTime.now())
-                .updatedTime(LocalDateTime.now())
+                .createdTime(now)
+                .updatedTime(now)
                 .build();
-        save(document);
-
-        //落库 analysis_task（PENDING）并投递异步任务
         AnalysisTask task = AnalysisTask.builder()
-                .documentId(document.getId())
+                .id(taskId)
+                .documentId(documentId)
                 .taskType(TASK_TYPE_RISK_ANALYSIS)
                 .status(TaskStatus.PENDING.getCode())
                 .retryCount(0)
-                .createdTime(LocalDateTime.now())
-                .updatedTime(LocalDateTime.now())
+                .createdTime(now)
+                .updatedTime(now)
                 .build();
-        analysisTaskMapper.insert(task);
 
-        taskProducer.dispatch(AnalysisTaskMessage.builder()
-                .taskId(task.getId())
-                .documentId(document.getId())
+        //半消息先落盘，这两条落库成功才提交消息：投递失败则两条都不写，不会留下永远「分析中」的空记录
+        taskProducer.dispatchInTransaction(AnalysisTaskMessage.builder()
+                .taskId(taskId)
+                .documentId(documentId)
                 .fileUrl(fileUrl)
                 .fileType(fileType)
-                .build());
+                .build(), () -> {
+            documentMapper.insert(document);
+            analysisTaskMapper.insert(task);
+        });
 
-        log.info("文件上传成功 documentId : {}, taskId : {}", document.getId(), task.getId());
+        log.info("文件上传成功 documentId : {}, taskId : {}", documentId, taskId);
         return DocumentUploadVO.builder()
-                .documentId(String.valueOf(document.getId()))
-                .taskId(String.valueOf(task.getId()))
+                .documentId(String.valueOf(documentId))
+                .taskId(String.valueOf(taskId))
                 .status(TaskStatus.PENDING.name())
                 .build();
     }
@@ -257,24 +265,33 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
      * 创建分析任务并投递消息（upload 与 reanalyze 共用）
      */
     private DocumentUploadVO createAnalysisTask(Document document) {
+        long taskId = SnowUtil.nextId();
+        LocalDateTime now = LocalDateTime.now();
         AnalysisTask task = AnalysisTask.builder()
+                .id(taskId)
                 .documentId(document.getId())
                 .taskType(TASK_TYPE_RISK_ANALYSIS)
                 .status(TaskStatus.PENDING.getCode())
                 .retryCount(0)
-                .createdTime(LocalDateTime.now())
-                .updatedTime(LocalDateTime.now())
+                .createdTime(now)
+                .updatedTime(now)
                 .build();
-        analysisTaskMapper.insert(task);
-        taskProducer.dispatch(AnalysisTaskMessage.builder()
-                .taskId(task.getId())
+        taskProducer.dispatchInTransaction(AnalysisTaskMessage.builder()
+                .taskId(taskId)
                 .documentId(document.getId())
                 .fileUrl(document.getFileUrl())
                 .fileType(document.getFileType())
-                .build());
+                .build(), () -> {
+            analysisTaskMapper.insert(task);
+            //列表页读的是 document.status，不一起置回 PENDING 会出现「列表已完成、详情分析中」
+            documentMapper.update(null, new LambdaUpdateWrapper<Document>()
+                    .eq(Document::getId, document.getId())
+                    .set(Document::getStatus, TaskStatus.PENDING.getCode())
+                    .set(Document::getUpdatedTime, LocalDateTime.now()));
+        });
         return DocumentUploadVO.builder()
                 .documentId(String.valueOf(document.getId()))
-                .taskId(String.valueOf(task.getId()))
+                .taskId(String.valueOf(taskId))
                 .status(TaskStatus.PENDING.name())
                 .build();
     }

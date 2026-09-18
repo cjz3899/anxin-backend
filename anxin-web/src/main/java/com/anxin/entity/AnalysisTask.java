@@ -22,7 +22,10 @@ public class AnalysisTask implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    @TableId(value = "id", type = IdType.AUTO)
+    /**
+     * 主键由应用侧生成：事务消息的消息体要在投递前就带上 taskId，供 broker 回查时核对本地事务结果
+     */
+    @TableId(value = "id", type = IdType.INPUT)
     private Long id;
 
     /**

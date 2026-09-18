@@ -19,7 +19,10 @@ public class Document implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
-    @TableId(value = "id", type = IdType.AUTO)
+    /**
+     * 主键由应用侧生成：与 analysis_task 同批落库，消息体需要在投递前带上 documentId
+     */
+    @TableId(value = "id", type = IdType.INPUT)
     private Long id;
 
     private Long userId;

@@ -1,5 +1,6 @@
 package com.anxin.rocketmq.consumer;
 
+import com.anxin.constant.TaskConstant;
 import com.anxin.entity.AnalysisTask;
 import com.anxin.entity.Document;
 import com.anxin.enums.TaskStatus;
@@ -23,8 +24,6 @@ import java.time.LocalDateTime;
 @Slf4j
 @Service
 public class AnalysisTaskConsumer {
-
-    private static final int MAX_RETRY = 3;
 
     @Resource
     private AnalysisTaskMapper analysisTaskMapper;
@@ -56,7 +55,7 @@ public class AnalysisTaskConsumer {
             log.error("任务处理失败 taskId : {}", message.getTaskId(), e);
             AnalysisTask task = analysisTaskMapper.selectById(message.getTaskId());
             int retry = (task == null ? 0 : task.getRetryCount()) + 1;
-            if (retry > MAX_RETRY) {
+            if (retry > TaskConstant.MAX_RETRY) {
                 String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 markFinished(message.getTaskId(), TaskStatus.FAILED, truncate(reason, 2000));
                 markDocumentFailed(message.getDocumentId());
