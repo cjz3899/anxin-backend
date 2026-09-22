@@ -24,7 +24,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <spring-boot.version>3.5.4</spring-boot.version>
-        <rocketmq.version>2.3.3</rocketmq.version>
         <lombok.version>1.18.36</lombok.version>
         <cn.hutool.version>5.8.40</cn.hutool.version>
         <jjwt.version>0.12.6</jjwt.version>
@@ -47,11 +46,6 @@
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.rocketmq</groupId>
-                <artifactId>rocketmq-spring-boot-starter</artifactId>
-                <version>${rocketmq.version}</version>
             </dependency>
             <dependency>
                 <groupId>cn.hutool</groupId>

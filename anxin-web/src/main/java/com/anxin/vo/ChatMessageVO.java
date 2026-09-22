@@ -19,6 +19,17 @@ public class ChatMessageVO {
      */
     private String role;
     private String content;
+
+    /**
+     * PENDING/PROCESSING/SUCCESS/FAILED，回答是异步生成的，前端按这个字段决定要不要继续轮询
+     */
+    private String status;
+
+    /**
+     * 回答生成失败时给用户的提示，成功为 null
+     */
+    private String errorMessage;
+
     private List<ChatReferenceVO> references;
     private LocalDateTime createdTime;
 }

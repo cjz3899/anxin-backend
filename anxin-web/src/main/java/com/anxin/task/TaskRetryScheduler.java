@@ -1,4 +1,4 @@
-package com.anxin.rocketmq.consumer;
+package com.anxin.task;
 
 import com.anxin.constant.TaskConstant;
 import com.anxin.entity.AnalysisTask;
@@ -6,12 +6,11 @@ import com.anxin.entity.Document;
 import com.anxin.enums.TaskStatus;
 import com.anxin.mapper.AnalysisTaskMapper;
 import com.anxin.mapper.DocumentMapper;
-import com.anxin.rocketmq.message.AnalysisTaskMessage;
-import com.anxin.rocketmq.producer.TaskProducer;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,13 +19,14 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 任务补偿调度器
- * 一、回收僵死的 PROCESSING：消费端抢占后若写回终态时再次失败，任务会永远停在 PROCESSING，按超时兜底；
- * 二、重投 PENDING：消费失败置回 PENDING 后消息已消费完毕，需要定时重投
+ * 任务补偿调度器。它不只是兜底，而是投递链路的一部分：
+ * 一是把漏网与失败的 PENDING 任务重新派发（含进程在事务提交后、执行前被回收的情况）；
+ * 二是回收僵死的 PROCESSING：消费端抢占后若写回终态时再次失败，任务会永远停在 PROCESSING，按超时兜底
  */
 @Slf4j
 @Component
-public class TaskRetrySchedular {
+@ConditionalOnProperty(prefix = "anxin.task", name = "compensation-enabled", havingValue = "true", matchIfMissing = true)
+public class TaskRetryScheduler {
 
     /**
      * PROCESSING 超过该分钟数仍未收尾，视为消费者异常退出或状态写回失败。
@@ -46,9 +46,9 @@ public class TaskRetrySchedular {
     private DocumentMapper documentMapper;
 
     @Resource
-    private TaskProducer taskProducer;
+    private TaskDispatcher taskDispatcher;
 
-    // TODO 之后可改成DLQ死信队列补偿机制
+    //fixedDelay：上一次任务执行完毕后，等待固定时间再执行下一次任务
     @Scheduled(fixedDelay = 30000)
     public void retryPendingTasks() {
         try {
@@ -100,12 +100,12 @@ public class TaskRetrySchedular {
     }
 
     /**
-     * 重投待处理任务：单条失败只跳过它自己，本轮其余任务照常处理
+     * 重投待处理任务：单条失败只跳过它自己，本轮其余任务照常处理。
+     * 扫描条件不带 retry_count，新建任务即使没被 afterCommit 投递成功（进程刚好被回收），这里也能捞回来
      */
     void retryPending() {
         List<AnalysisTask> tasks = analysisTaskMapper.selectList(new LambdaQueryWrapper<AnalysisTask>()
                 .eq(AnalysisTask::getStatus, TaskStatus.PENDING.getCode())
-                .gt(AnalysisTask::getRetryCount, 0)
                 .orderByAsc(AnalysisTask::getId)
                 .last("LIMIT " + BATCH_SIZE));
         for (AnalysisTask task : tasks) {
@@ -114,15 +114,15 @@ public class TaskRetrySchedular {
                 if (Objects.isNull(document)) {
                     continue;
                 }
-                log.info("补偿重投分析任务 taskId : {}，retryCount : {}", task.getId(), task.getRetryCount());
-                taskProducer.dispatch(AnalysisTaskMessage.builder()
+                log.info("补偿派发分析任务 taskId : {}，retryCount : {}", task.getId(), task.getRetryCount());
+                taskDispatcher.dispatch(AnalysisTaskMessage.builder()
                         .taskId(task.getId())
                         .documentId(task.getDocumentId())
                         .fileUrl(document.getFileUrl())
                         .fileType(document.getFileType())
                         .build());
             } catch (Exception e) {
-                log.error("补偿重投失败 taskId : {}，本轮跳过", task.getId(), e);
+                log.error("补偿派发失败 taskId : {}，本轮跳过", task.getId(), e);
             }
         }
     }

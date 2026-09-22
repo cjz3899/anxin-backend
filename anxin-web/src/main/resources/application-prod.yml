@@ -18,10 +18,25 @@ anxin:
     refresh-secret: ${JWT_REFRESH_SECRET}
     access-expiration: ${JWT_ACCESS_EXPIRATION:7200000}
     refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
-  mq:
-    name-server: ${ROCKETMQ_NAME_SERVER}
-    producer-group: anxin-producer-group
-    default-topic: anxin-topic
+  ai:
+    openai:
+      api-key: ${AI_API_KEY}
+      base-url: ${AI_BASE_URL}
+      model: ${AI_MODEL}
+  # 覆盖基础配置里的空默认值：生产缺这些变量直接启动失败，避免上线后才发现上传/登录不可用
+  oss:
+    endpoint: ${OSS_ENDPOINT}
+    access-key-id: ${OSS_ACCESS_KEY_ID}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET}
+    bucket: ${OSS_BUCKET}
+  wechat:
+    appid: ${WECHAT_APPID}
+    secret: ${WECHAT_SECRET}
+  task:
+    worker-size: ${TASK_WORKER_SIZE:2}
+    queue-size: ${TASK_QUEUE_SIZE:64}
+    chat-worker-size: ${CHAT_WORKER_SIZE:4}
+    chat-queue-size: ${CHAT_QUEUE_SIZE:64}
 
 server:
   port: ${SERVER_PORT:8080}

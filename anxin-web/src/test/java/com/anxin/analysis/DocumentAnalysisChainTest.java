@@ -18,13 +18,12 @@ import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
 import com.anxin.mapper.UserMapper;
 import com.anxin.service.IDocumentService;
-import com.anxin.threadlocal.BaseContext;
+import com.anxin.support.DirectUploadFixture;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.io.ByteArrayInputStream;
@@ -43,9 +42,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * DocumentAnalysisService 全链路集成测试（stub 掉 LLM，无需 api-key）：
- * 依赖本地 MySQL/Redis/RocketMQ，覆盖 解析→拆节落库→AI结果落库→状态流转 与 空解析终止 两条路径
+ * 依赖本地 MySQL/Redis，覆盖 解析→拆节落库→AI结果落库→状态流转 与 空解析终止 两条路径
  */
-@SpringBootTest
+@SpringBootTest(properties = "anxin.task.compensation-enabled=false")
 class DocumentAnalysisChainTest {
 
     private static final String TEST_OPENID = "test-openid-001";
@@ -75,20 +74,12 @@ class DocumentAnalysisChainTest {
     private RiskAnalyzer riskAnalyzer;
 
     @Test
-    void docxFullChainPersistsSectionsAndRisks() throws InterruptedException {
+    void docxFullChainPersistsSectionsAndRisks() throws Exception {
         when(riskAnalyzer.analyze(anyList())).thenReturn(stubResult());
 
         Long userId = ensureTestUser();
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "test-contract.docx", "application/octet-stream", minimalDocx());
-
-        BaseContext.setCurrentId(userId);
-        DocumentUploadVO vo;
-        try {
-            vo = documentService.upload(file);
-        } finally {
-            BaseContext.remove();
-        }
+        DocumentUploadVO vo = DirectUploadFixture.upload(
+                documentService, userId, "test-contract.docx", minimalDocx());
         Long taskId = Long.valueOf(vo.getTaskId());
         Long documentId = Long.valueOf(vo.getDocumentId());
 
@@ -96,7 +87,7 @@ class DocumentAnalysisChainTest {
         System.out.println("docx 全链路任务终态 status : " + task.getStatus()
                 + ", errorMessage : " + task.getErrorMessage());
         assertEquals(TaskStatus.SUCCESS.getCode(), task.getStatus().intValue(),
-                "任务未在超时时间内到达 SUCCESS，请确认 RocketMQ broker 正在运行且消费日志无异常");
+                "任务未在超时时间内到达 SUCCESS，请确认分析线程池正常且消费日志无异常");
 
         Document document = documentMapper.selectById(documentId);
         assertEquals(TaskStatus.SUCCESS.getCode(), document.getStatus().intValue(), "document.status 未同步置 SUCCESS");
@@ -124,18 +115,10 @@ class DocumentAnalysisChainTest {
     }
 
     @Test
-    void emptyParseFailsImmediatelyWithoutRetry() throws InterruptedException {
+    void emptyParseFailsImmediatelyWithoutRetry() throws Exception {
         Long userId = ensureTestUser();
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "scan.pdf", "application/pdf", minimalPdf());
-
-        BaseContext.setCurrentId(userId);
-        DocumentUploadVO vo;
-        try {
-            vo = documentService.upload(file);
-        } finally {
-            BaseContext.remove();
-        }
+        DocumentUploadVO vo = DirectUploadFixture.upload(
+                documentService, userId, "scan.pdf", minimalPdf());
         Long taskId = Long.valueOf(vo.getTaskId());
         Long documentId = Long.valueOf(vo.getDocumentId());
 
@@ -172,7 +155,7 @@ class DocumentAnalysisChainTest {
     }
 
     /**
-     * 轮询等待任务离开 PENDING/PROCESSING（消费链路经真实 RocketMQ 异步完成）
+     * 轮询等待任务离开 PENDING/PROCESSING（消费链路经本机线程池异步完成）
      */
     private AnalysisTask waitUntilFinished(Long taskId, Duration timeout) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeout.toMillis();

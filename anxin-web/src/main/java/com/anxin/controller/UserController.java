@@ -3,6 +3,8 @@ package com.anxin.controller;
 import com.anxin.dto.LoginDTO;
 import com.anxin.dto.ProfileDTO;
 import com.anxin.dto.RefreshDTO;
+import com.anxin.dto.UploadConfirmDTO;
+import com.anxin.dto.UploadCredentialDTO;
 import com.anxin.entity.User;
 import com.anxin.model.TokenPair;
 import com.anxin.result.Result;
@@ -11,11 +13,11 @@ import com.anxin.service.support.TokenService;
 import com.anxin.threadlocal.BaseContext;
 import com.anxin.vo.AvatarVO;
 import com.anxin.vo.LoginVO;
+import com.anxin.vo.UploadCredentialVO;
 import com.anxin.vo.UserVO;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/user")
@@ -40,13 +42,20 @@ public class UserController {
     }
 
     /**
-     * 头像上传（multipart 字段名 file，需登录态 token）：
-     * 校验 ≤2MB / 格式白名单 / 微信内容安全 → 存 OSS → 返回永久 URL
+     * 申请头像的 OSS 表单直传凭证（小程序用 wx.uploadFile 直传，字节不经过服务端）
+     */
+    @PostMapping("/avatar-credential")
+    public Result<UploadCredentialVO> avatarCredential(@Valid @RequestBody UploadCredentialDTO dto) {
+        return Result.success(userService.requestAvatarCredential(dto));
+    }
+
+    /**
+     * 头像直传完成后的确认：校验 ≤2MB / 真实格式 / 微信内容安全，违规即删对象
      * URL 不在此落库，由前端连同昵称一起 POST /api/user/profile 持久化
      */
-    @PostMapping("/avatar")
-    public Result<AvatarVO> avatar(@RequestParam("file") MultipartFile file) {
-        return Result.success("头像上传成功", userService.uploadAvatar(file));
+    @PostMapping("/avatar-confirm")
+    public Result<AvatarVO> avatarConfirm(@Valid @RequestBody UploadConfirmDTO dto) {
+        return Result.success("头像上传成功", userService.confirmAvatarUpload(dto));
     }
 
     @PostMapping("/login")

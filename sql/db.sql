@@ -85,7 +85,8 @@ CREATE TABLE `analysis_task`
     `finished_time` DATETIME             DEFAULT NULL COMMENT '任务完成时间',
     `created_time`  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_time`  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    KEY `idx_status_started` (`status`, `started_time`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT ='文件AI分析任务表';
@@ -167,15 +168,18 @@ DROP TABLE IF EXISTS `chat_message`;
 
 CREATE TABLE `chat_message`
 (
-    `id`                 BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `id`                 BIGINT      NOT NULL COMMENT '主键ID，应用侧雪花生成',
     `session_id`         BIGINT      NOT NULL COMMENT '会话ID，逻辑关联chat_session.id',
     `role`               VARCHAR(20) NOT NULL COMMENT '消息角色：USER、ASSISTANT',
     `content`            TEXT        NOT NULL COMMENT '消息内容',
+    `status`             TINYINT     NOT NULL DEFAULT 2 COMMENT '状态：0-待生成，1-生成中，2-成功，3-失败；用户消息恒为2',
+    `error_message`      VARCHAR(500)         DEFAULT NULL COMMENT '回答生成失败原因',
     `reference_sections` VARCHAR(2000)        DEFAULT NULL COMMENT '引用的文档章节ID，JSON格式',
     `token_usage`        INT                  DEFAULT NULL COMMENT '本次消息Token消耗',
     `created_time`       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_time`       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    KEY `idx_status_created` (`status`, `created_time`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT ='AI聊天消息表';

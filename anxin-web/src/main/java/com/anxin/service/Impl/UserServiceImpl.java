@@ -4,6 +4,8 @@ import com.anxin.constant.RedisKeyConstant;
 import com.anxin.constant.UploadConstant;
 import com.anxin.dto.LoginDTO;
 import com.anxin.dto.ProfileDTO;
+import com.anxin.dto.UploadConfirmDTO;
+import com.anxin.dto.UploadCredentialDTO;
 import com.anxin.entity.User;
 import com.anxin.enums.ResultCode;
 import com.anxin.exception.ServiceException;
@@ -15,6 +17,7 @@ import com.anxin.service.support.WxSecurityService;
 import com.anxin.service.support.WxService;
 import com.anxin.threadlocal.BaseContext;
 import com.anxin.vo.AvatarVO;
+import com.anxin.vo.UploadCredentialVO;
 import com.anxin.vo.UserVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -23,14 +26,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
+
+    /**
+     * 头像对象前缀，签发与确认都按 前缀/用户ID/ 校验归属
+     */
+    private static final String AVATAR_CATEGORY = "avatars";
+
+    private static final Set<String> AVATAR_EXTS = Set.of("bmp", "jpg", "jpeg", "png", "gif");
 
     @Resource
     private WxService wxService;
@@ -106,34 +115,51 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public AvatarVO uploadAvatar(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "请选择头像文件");
-        }
-        // 先按大小拦截，不读流
-        if (file.getSize() > UploadConstant.AVATAR_MAX_BYTES) {
-            throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "头像大小不能超过2MB");
-        }
-        byte[] bytes;
-        try {
-            bytes = file.getBytes();
-        } catch (IOException e) {
-            log.error("读取头像文件失败", e);
-            throw new ServiceException(ResultCode.FILE_SAVE_FAILED);
-        }
-        // 用 Tika 按文件头魔数校验真实类型，防止改名伪装（如 exe 改成 .jpg）
-        String mime = fileTypeService.detectMime(bytes);
-        if (!fileTypeService.isAvatar(mime)) {
+    public UploadCredentialVO requestAvatarCredential(UploadCredentialDTO dto) {
+        String ext = fileTypeService.extensionOf(dto.getFileName());
+        if (!AVATAR_EXTS.contains(ext)) {
             throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getCode(),
                     "头像仅支持 BMP/JPEG/JPG/GIF/PNG 格式图片");
         }
-        // 内容安全：违规（errcode=87014）在此抛 CONTENT_VIOLATION，文件不会进入 OSS
-        wxSecurityService.checkImage(bytes);
+        //对象名带当前用户目录，确认时据此拒绝回填别人的 key
+        String key = ossStorageService.buildKey(AVATAR_CATEGORY,
+                String.valueOf(BaseContext.getCurrentId()), ext);
+        return ossStorageService.createPostCredential(key,
+                UploadConstant.AVATAR_MAX_BYTES, UploadConstant.CREDENTIAL_TTL);
+    }
+
+    @Override
+    public AvatarVO confirmAvatarUpload(UploadConfirmDTO dto) {
+        String key = dto.getObjectKey();
+        String ownPrefix = AVATAR_CATEGORY + "/" + BaseContext.getCurrentId() + "/";
+        if (!key.startsWith(ownPrefix) || key.contains("..")) {
+            log.warn("直传确认拒绝了非本人前缀的头像 key : {}", key);
+            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "objectKey 不合法");
+        }
+        String fileUrl = ossStorageService.toUrl(key);
+
+        try {
+            if (ossStorageService.headSize(key) > UploadConstant.AVATAR_MAX_BYTES) {
+                throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "头像大小不能超过2MB");
+            }
+            //魔数校验真实类型，防止改名伪装（如 exe 改成 .jpg）
+            String mime = fileTypeService.detectMime(
+                    ossStorageService.readHead(key, UploadConstant.DETECT_HEAD_BYTES));
+            if (!fileTypeService.isAvatar(mime)) {
+                throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getCode(),
+                        "头像仅支持 BMP/JPEG/JPG/GIF/PNG 格式图片");
+            }
+            //内容安全要整份字节，只能把刚直传上来的图拉回来送检；
+            //代价是违规图在 OSS 上有一个短暂可读的窗口，检测不过会立即删除，且 key 是随机 UUID 不可猜
+            wxSecurityService.checkImage(ossStorageService.download(fileUrl));
+        } catch (ServiceException e) {
+            //任何一项校验不过都不能把文件留在公共读的 bucket 上
+            ossStorageService.deleteByKey(key);
+            throw e;
+        }
+
         // 1:1 正方形由前端裁剪/展示保证（微信 chooseAvatar 已裁为正方形），后端不强制
-        String key = ossStorageService.upload(bytes, mime, "avatars", fileTypeService.realExtOf(mime));
-        return AvatarVO.builder()
-                .avatar(ossStorageService.toUrl(key))
-                .build();
+        return AvatarVO.builder().avatar(fileUrl).build();
     }
 
     @Override

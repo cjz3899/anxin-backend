@@ -2,11 +2,13 @@ package com.anxin.service;
 
 import com.anxin.dto.LoginDTO;
 import com.anxin.dto.ProfileDTO;
+import com.anxin.dto.UploadConfirmDTO;
+import com.anxin.dto.UploadCredentialDTO;
 import com.anxin.entity.User;
 import com.anxin.vo.AvatarVO;
+import com.anxin.vo.UploadCredentialVO;
 import com.anxin.vo.UserVO;
 import com.baomidou.mybatisplus.extension.service.IService;
-import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 用户业务接口。
@@ -26,10 +28,15 @@ public interface IUserService extends IService<User> {
     UserVO me();
 
     /**
-     * 头像上传：校验大小（≤2MB）、真实类型（微信规范白名单 BMP/JPEG/JPG/GIF/PNG）与内容安全，
-     * 通过后存储到 OSS 并返回永久 URL（本方法不落库，由 /api/user/profile 一并持久化）
+     * 签发头像的 OSS 表单直传凭证：头像字节不经过服务端（小程序侧请求体上限很小）
      */
-    AvatarVO uploadAvatar(MultipartFile file);
+    UploadCredentialVO requestAvatarCredential(UploadCredentialDTO dto);
+
+    /**
+     * 头像直传完成后的确认：校验大小（≤2MB）、真实类型（BMP/JPEG/JPG/GIF/PNG）与微信内容安全，
+     * 任一不过即删除对象；通过后返回永久 URL（本方法不落库，由 /api/user/profile 一并持久化）
+     */
+    AvatarVO confirmAvatarUpload(UploadConfirmDTO dto);
 
     void logout(Long userId);
 }

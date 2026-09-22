@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -99,6 +100,18 @@ public class FileTypeService {
 
     public String realExtOf(String mime) {
         return MIME_TO_EXT.get(mime);
+    }
+
+    /**
+     * 取文件名的小写扩展名（无后缀返回空串）。只用于白名单比对，不参与对象路径拼接
+     */
+    public String extensionOf(String fileName) {
+        String name = fileName == null ? "" : fileName;
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || dot == name.length() - 1) {
+            return "";
+        }
+        return name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
     public boolean isImage(String mime) {
