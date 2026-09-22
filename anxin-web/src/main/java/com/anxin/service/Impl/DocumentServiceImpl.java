@@ -28,7 +28,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -53,16 +52,6 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
      * 只认这些后缀，避免把任意字符串拼进对象名
      */
     private static final Set<String> UPLOAD_EXTS = Set.of("pdf", "doc", "docx", "jpg", "jpeg", "png");
-
-    /**
-     * 凭证有效期：覆盖一次弱网上传即可，不留可重放的长窗口
-     */
-    private static final Duration CREDENTIAL_TTL = Duration.ofMinutes(10);
-
-    /**
-     * 魔数检测只读对象头部这么多字节，不为识别类型拉回整份文件
-     */
-    private static final int DETECT_HEAD_BYTES = 64 * 1024;
 
     @Resource
     private FileTypeService fileTypeService;
@@ -90,7 +79,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
 
     @Override
     public UploadCredentialVO requestUploadCredential(UploadCredentialDTO dto) {
-        String ext = extensionOf(dto.getFileName());
+        String ext = fileTypeService.extensionOf(dto.getFileName());
         if (!UPLOAD_EXTS.contains(ext)) {
             throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getCode(),
                     "不支持的文件类型，仅支持 PDF/Word 与 jpg/png 图片");
@@ -99,7 +88,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         String key = ossStorageService.buildKey(DOC_CATEGORY,
                 String.valueOf(BaseContext.getCurrentId()), ext);
         //签发时还不知道真实类型，先按文档上限约束，确认时再按图片收紧
-        return ossStorageService.createPostCredential(key, UploadConstant.DOC_MAX_BYTES, CREDENTIAL_TTL);
+        return ossStorageService.createPostCredential(key, UploadConstant.DOC_MAX_BYTES, UploadConstant.CREDENTIAL_TTL);
     }
 
     @Override
@@ -112,7 +101,8 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
         }
 
         long size = ossStorageService.headSize(key);
-        String mime = fileTypeService.detectMime(ossStorageService.readHead(key, DETECT_HEAD_BYTES));
+        String mime = fileTypeService.detectMime(
+                ossStorageService.readHead(key, UploadConstant.DETECT_HEAD_BYTES));
         boolean image = fileTypeService.isImage(mime);
         if (!image && !fileTypeService.isDocument(mime)) {
             log.warn("拒绝非白名单直传文件 key : {}, 真实类型 : {}", key, mime);
@@ -383,14 +373,6 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
             return statusGroup;
         }
         throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "非法的状态分组 : " + statusGroup);
-    }
-
-    private String extensionOf(String fileName) {
-        int dot = fileName.lastIndexOf('.');
-        if (dot < 0 || dot == fileName.length() - 1) {
-            return "";
-        }
-        return fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
     /**
