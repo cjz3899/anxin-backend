@@ -16,7 +16,7 @@ import com.anxin.mapper.RiskResultMapper;
 import com.anxin.parser.model.ParsedSection;
 import com.anxin.service.support.extract.SectionExtractor;
 import com.anxin.service.support.extract.SectionExtractorRegistry;
-import com.anxin.rocketmq.message.AnalysisTaskMessage;
+import com.anxin.task.AnalysisTaskMessage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;

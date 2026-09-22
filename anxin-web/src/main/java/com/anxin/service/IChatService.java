@@ -24,12 +24,13 @@ public interface IChatService {
     PageResult<ChatSessionVO> listSessions(Long documentId, int page, int size);
 
     /**
-     * 提问：拼入文档条款与历史对话，调用模型后落库并返回回答
+     * 提问：落库用户消息与一条 PENDING 的占位回答后立即返回，
+     * 模型调用在后台完成，前端轮询 listMessages 看 status 拿答案
      */
     ChatMessageVO sendMessage(Long sessionId, ChatMessageDTO dto);
 
     /**
-     * 查询会话的历史消息（正序），含回答引用的条款
+     * 查询会话的历史消息（正序），含回答状态与引用的条款
      */
     List<ChatMessageVO> listMessages(Long sessionId);
 

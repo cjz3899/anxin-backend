@@ -1,32 +1,34 @@
 package com.anxin.service.impl;
 
 import com.anxin.constant.UploadConstant;
+import com.anxin.dto.UploadConfirmDTO;
+import com.anxin.dto.UploadCredentialDTO;
 import com.anxin.entity.*;
 import com.anxin.enums.ResultCode;
 import com.anxin.enums.TaskStatus;
 import com.anxin.exception.ServiceException;
 import com.anxin.mapper.*;
 import com.anxin.result.PageResult;
-import com.anxin.rocketmq.message.AnalysisTaskMessage;
-import com.anxin.rocketmq.producer.TaskProducer;
 import com.anxin.service.IDocumentService;
 import com.anxin.service.support.FileTypeService;
 import com.anxin.service.support.OssStorageService;
 import com.anxin.service.support.RiskLevelCalculator;
+import com.anxin.task.AnalysisTaskMessage;
+import com.anxin.task.AnalysisTaskSubmitter;
 import com.anxin.threadlocal.BaseContext;
 import com.anxin.util.SnowUtil;
 import com.anxin.vo.DocumentDetailVO;
 import com.anxin.vo.DocumentListVO;
 import com.anxin.vo.DocumentUploadVO;
+import com.anxin.vo.UploadCredentialVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -43,9 +45,24 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
     private static final String TASK_TYPE_RISK_ANALYSIS = "RISK_ANALYSIS";
 
     /**
-     * 仅用于上传前的初步大小分档，最终类型以 Tika 检测为准
+     * 直传对象前缀，签发与确认都按 前缀/用户ID/ 校验归属
      */
-    private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "bmp", "webp");
+    private static final String DOC_CATEGORY = "documents";
+
+    /**
+     * 只认这些后缀，避免把任意字符串拼进对象名
+     */
+    private static final Set<String> UPLOAD_EXTS = Set.of("pdf", "doc", "docx", "jpg", "jpeg", "png");
+
+    /**
+     * 凭证有效期：覆盖一次弱网上传即可，不留可重放的长窗口
+     */
+    private static final Duration CREDENTIAL_TTL = Duration.ofMinutes(10);
+
+    /**
+     * 魔数检测只读对象头部这么多字节，不为识别类型拉回整份文件
+     */
+    private static final int DETECT_HEAD_BYTES = 64 * 1024;
 
     @Resource
     private FileTypeService fileTypeService;
@@ -57,7 +74,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
     private AnalysisTaskMapper analysisTaskMapper;
 
     @Resource
-    private TaskProducer taskProducer;
+    private AnalysisTaskSubmitter taskSubmitter;
 
     @Resource
     private DocumentMapper documentMapper;
@@ -72,47 +89,54 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
     private DocumentSectionMapper documentSectionMapper;
 
     @Override
-    public DocumentUploadVO upload(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "请选择要上传的文件");
-        }
-        String originalName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
-        long size = file.getSize();
-        //获取文件扩展名
-        String ext = extensionOf(originalName);
-
-        //初步大小闸门：按扩展名预判类别（图片5MB/文档10MB），超限立即拒绝
-        boolean likelyImage = IMAGE_EXTENSIONS.contains(ext);
-        long preLimit = likelyImage ? UploadConstant.IMAGE_MAX_BYTES : UploadConstant.DOC_MAX_BYTES;
-        if (size > preLimit) {
-            throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(),
-                    likelyImage ? "图片大小不能超过5MB" : "文档大小不能超过10MB");
-        }
-
-        //读流（此时大小已被闸门限制在 10MB 内）
-        byte[] bytes;
-        try {
-            bytes = file.getBytes();
-        } catch (IOException e) {
-            log.error("读取上传文件失败 fileName : {}", originalName, e);
-            throw new ServiceException(ResultCode.FILE_SAVE_FAILED);
-        }
-
-        //Tika 按文件头魔数检测真实类型，白名单校验（isImage/isDocument，防改名伪装的主闸门）
-        String mime = fileTypeService.detectMime(bytes);
-        if (!fileTypeService.isImage(mime) && !fileTypeService.isDocument(mime)) {
-            log.warn("拒绝非白名单文件 fileName : {}, 真实类型 : {}", originalName, mime);
+    public UploadCredentialVO requestUploadCredential(UploadCredentialDTO dto) {
+        String ext = extensionOf(dto.getFileName());
+        if (!UPLOAD_EXTS.contains(ext)) {
             throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getCode(),
                     "不支持的文件类型，仅支持 PDF/Word 与 jpg/png 图片");
         }
+        //对象名里带上当前用户 ID 作为目录，确认时据此拒绝回填别人的 key
+        String key = ossStorageService.buildKey(DOC_CATEGORY,
+                String.valueOf(BaseContext.getCurrentId()), ext);
+        //签发时还不知道真实类型，先按文档上限约束，确认时再按图片收紧
+        return ossStorageService.createPostCredential(key, UploadConstant.DOC_MAX_BYTES, CREDENTIAL_TTL);
+    }
 
-        //按真实类型复核大小上限（图片5MB，文档10MB）
-        if (fileTypeService.isImage(mime) && size > UploadConstant.IMAGE_MAX_BYTES) {
-            throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(), "图片大小不能超过5MB");
+    @Override
+    public DocumentUploadVO confirmUpload(UploadConfirmDTO dto) {
+        String key = dto.getObjectKey();
+        String ownPrefix = DOC_CATEGORY + "/" + BaseContext.getCurrentId() + "/";
+        if (!key.startsWith(ownPrefix) || key.contains("..")) {
+            log.warn("直传确认拒绝了非本人前缀的 key : {}", key);
+            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "objectKey 不合法");
         }
 
-        //存储：UUID + Tika 真实后缀，路径不拼接用户文件名
-        String key = ossStorageService.upload(bytes, mime, "documents", fileTypeService.realExtOf(mime));
+        long size = ossStorageService.headSize(key);
+        String mime = fileTypeService.detectMime(ossStorageService.readHead(key, DETECT_HEAD_BYTES));
+        boolean image = fileTypeService.isImage(mime);
+        if (!image && !fileTypeService.isDocument(mime)) {
+            log.warn("拒绝非白名单直传文件 key : {}, 真实类型 : {}", key, mime);
+            ossStorageService.deleteByKey(key);
+            throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORTED.getCode(),
+                    "不支持的文件类型，仅支持 PDF/Word 与 jpg/png 图片");
+        }
+        long limit = image ? UploadConstant.IMAGE_MAX_BYTES : UploadConstant.DOC_MAX_BYTES;
+        if (size > limit) {
+            ossStorageService.deleteByKey(key);
+            throw new ServiceException(ResultCode.FILE_SIZE_EXCEEDED.getCode(),
+                    image ? "图片大小不能超过5MB" : "文档大小不能超过10MB");
+        }
+
+        String originalName = dto.getFileName() == null || dto.getFileName().isBlank()
+                ? key.substring(key.lastIndexOf('/') + 1)
+                : dto.getFileName();
+        return registerDocument(key, originalName, mime, size);
+    }
+
+    /**
+     * multipart 与直传两条入口共用的后半段：落库 document + 建 PENDING 任务 + 提交后派发分析
+     */
+    private DocumentUploadVO registerDocument(String key, String originalName, String mime, long size) {
         String fileUrl = ossStorageService.toUrl(key);
 
         //主键由应用侧生成：消息体在投递前就要带上两个 ID，紧贴投递生成以缩短「生成 ID → 落库可见」的窗口
@@ -142,8 +166,8 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .updatedTime(now)
                 .build();
 
-        //半消息先落盘，这两条落库成功才提交消息：投递失败则两条都不写，不会留下永远「分析中」的空记录
-        taskProducer.dispatchInTransaction(AnalysisTaskMessage.builder()
+        //两条落库与投递在同一事务里：回滚则一条都不写，提交后才派发给线程池，不会留下永远「分析中」的空记录
+        taskSubmitter.submit(AnalysisTaskMessage.builder()
                 .taskId(taskId)
                 .documentId(documentId)
                 .fileUrl(fileUrl)
@@ -276,7 +300,7 @@ public class DocumentServiceImpl extends ServiceImpl<DocumentMapper, Document> i
                 .createdTime(now)
                 .updatedTime(now)
                 .build();
-        taskProducer.dispatchInTransaction(AnalysisTaskMessage.builder()
+        taskSubmitter.submit(AnalysisTaskMessage.builder()
                 .taskId(taskId)
                 .documentId(document.getId())
                 .fileUrl(document.getFileUrl())

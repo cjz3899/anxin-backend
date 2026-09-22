@@ -1,9 +1,6 @@
 package com.anxin.service.support;
 
-import cn.hutool.json.JSONArray;
-import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.anxin.ai.prompt.DocChatPromptTemplate;
 import com.anxin.dto.ChatMessageDTO;
 import com.anxin.dto.CreateSessionDTO;
 import com.anxin.entity.ChatMessage;
@@ -11,6 +8,7 @@ import com.anxin.entity.ChatSession;
 import com.anxin.entity.Document;
 import com.anxin.entity.DocumentSection;
 import com.anxin.enums.ResultCode;
+import com.anxin.enums.TaskStatus;
 import com.anxin.exception.ServiceException;
 import com.anxin.mapper.ChatMessageMapper;
 import com.anxin.mapper.ChatSessionMapper;
@@ -18,7 +16,9 @@ import com.anxin.mapper.DocumentMapper;
 import com.anxin.mapper.DocumentSectionMapper;
 import com.anxin.result.PageResult;
 import com.anxin.service.IChatService;
+import com.anxin.task.ChatReplyDispatcher;
 import com.anxin.threadlocal.BaseContext;
+import com.anxin.util.SnowUtil;
 import com.anxin.vo.ChatMessageVO;
 import com.anxin.vo.ChatReferenceVO;
 import com.anxin.vo.ChatSessionVO;
@@ -26,16 +26,16 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
 
 /**
  * 文档问答服务（轻量 RAG）：
- * 上下文取当前文档已解析的全部条款（超预算按顺序截断），引用由模型返回的 sectionNo 映射回 sectionId
- *
+ * 提问只负责落库与派发，模型调用与回写由 ChatReplyConsumer 在后台完成，前端轮询消息列表拿结果。
+ * 这样提问接口不再被几十秒的模型响应占住，也就绕开了云托管网关的超时上限
  */
 @Slf4j
 @Service
@@ -46,16 +46,6 @@ public class DocChatService implements IChatService {
      */
     private static final int SESSION_OPEN = 1;
     private static final int SESSION_CLOSED = 0;
-
-    /**
-     * 拼入 prompt 的历史消息条数，控制上下文长度
-     */
-    private static final int MAX_HISTORY = 6;
-
-    /**
-     * 条款上下文的字符预算，超出则按条款顺序截断
-     */
-    private static final int CONTEXT_CHAR_BUDGET = 24000;
 
     /**
      * 会话列表每页条数上限，防止前端传入过大的 size
@@ -74,11 +64,8 @@ public class DocChatService implements IChatService {
     @Resource
     private ChatMessageMapper chatMessageMapper;
 
-    private final ChatClient chatClient;
-
-    public DocChatService(ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
-    }
+    @Resource
+    private ChatReplyDispatcher chatReplyDispatcher;
 
     @Override
     public ChatSessionVO createSession(Long documentId, CreateSessionDTO dto) {
@@ -115,52 +102,49 @@ public class DocChatService implements IChatService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public ChatMessageVO sendMessage(Long sessionId, ChatMessageDTO dto) {
         ChatSession session = getOwnedSession(sessionId);
         if (session.getStatus() == null || session.getStatus() != SESSION_OPEN) {
             throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "会话已关闭，无法继续提问");
         }
+        //条款都取不到就别占坑，否则用户只会看到一条永远转圈的空回答
+        if (loadSections(session.getDocumentId()).isEmpty()) {
+            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "该文档暂无可引用的条款内容");
+        }
 
-        // 先落用户消息：即便随后调用模型失败，提问记录也不会丢
         LocalDateTime now = LocalDateTime.now();
+        //消息 ID 由应用侧生成：占位回答的 ID 要立刻返回给前端轮询，不能等自增主键
+        long assistantMessageId = SnowUtil.nextId();
         chatMessageMapper.insert(ChatMessage.builder()
+                .id(SnowUtil.nextId())
                 .sessionId(sessionId)
                 .role("USER")
                 .content(dto.getContent())
+                .status(TaskStatus.SUCCESS.getCode())
+                .createdTime(now)
+                .updatedTime(now)
+                .build());
+        chatMessageMapper.insert(ChatMessage.builder()
+                .id(assistantMessageId)
+                .sessionId(sessionId)
+                .role("ASSISTANT")
+                .content("")
+                .status(TaskStatus.PENDING.getCode())
                 .createdTime(now)
                 .updatedTime(now)
                 .build());
 
-        List<DocumentSection> sections = loadSections(session.getDocumentId());
-        if (sections.isEmpty()) {
-            throw new ServiceException(ResultCode.PARAM_ERROR.getCode(), "该文档暂无可引用的条款内容");
-        }
-
-        String answer = chatClient.prompt()
-                .system(DocChatPromptTemplate.buildSystemPrompt())
-                .user(DocChatPromptTemplate.buildUserPrompt(
-                        buildContext(sections), buildHistory(sessionId), dto.getContent()))
-                .call()
-                .content();
-
-        ChatAnswer parsed = parseAnswer(answer, indexBySectionNo(sections));
-        ChatMessage assistantMessage = ChatMessage.builder()
-                .sessionId(sessionId)
-                .role("ASSISTANT")
-                .content(parsed.content())
-                .referenceSections(JSONUtil.toJsonStr(parsed.referenceIds()))
-                .tokenUsage(parsed.content().length())
-                .createdTime(LocalDateTime.now())
-                .updatedTime(LocalDateTime.now())
-                .build();
-        chatMessageMapper.insert(assistantMessage);
+        //事务提交后才派发，否则后台线程读不到这条占位消息
+        chatReplyDispatcher.dispatch(assistantMessageId);
 
         return ChatMessageVO.builder()
-                .messageId(String.valueOf(assistantMessage.getId()))
+                .messageId(String.valueOf(assistantMessageId))
                 .role("ASSISTANT")
-                .content(parsed.content())
-                .references(parsed.references())
-                .createdTime(assistantMessage.getCreatedTime())
+                .content("")
+                .status(TaskStatus.PENDING.name())
+                .references(List.of())
+                .createdTime(now)
                 .build();
     }
 
@@ -178,6 +162,8 @@ public class DocChatService implements IChatService {
                 .messageId(String.valueOf(message.getId()))
                 .role(message.getRole())
                 .content(message.getContent())
+                .status(TaskStatus.fromCode(message.getStatus()).name())
+                .errorMessage(message.getErrorMessage())
                 .references(parseReferences(message.getReferenceSections(), sectionById))
                 .createdTime(message.getCreatedTime())
                 .build()).toList();
@@ -190,73 +176,6 @@ public class DocChatService implements IChatService {
                 .eq(ChatSession::getId, sessionId)
                 .set(ChatSession::getStatus, SESSION_CLOSED)
                 .set(ChatSession::getUpdatedTime, LocalDateTime.now()));
-    }
-
-    /**
-     * 文档条款上下文：按 sort 顺序拼接，超出字符预算即截断（轻量 RAG 的取舍：不做检索）
-     */
-    private String buildContext(List<DocumentSection> sections) {
-        StringBuilder sb = new StringBuilder();
-        int used = 0;
-        for (DocumentSection section : sections) {
-            String block = formatBlock(section);
-            if (used > 0 && used + block.length() > CONTEXT_CHAR_BUDGET) {
-                log.warn("文档条款超出上下文预算，已截断，纳入字符数 : {}", used);
-                break;
-            }
-            sb.append(block);
-            used += block.length();
-        }
-        return sb.toString();
-    }
-
-    private String formatBlock(DocumentSection section) {
-        return "【" + (section.getSectionNo() == null ? "" : section.getSectionNo()) + "】"
-                + (section.getTitle() == null ? "" : section.getTitle()) + "\n"
-                + section.getContent() + "\n\n";
-    }
-
-    /**
-     * 历史对话：取最近 MAX_HISTORY 条后恢复正序
-     */
-    private String buildHistory(Long sessionId) {
-        List<ChatMessage> history = chatMessageMapper.selectList(new LambdaQueryWrapper<ChatMessage>()
-                .eq(ChatMessage::getSessionId, sessionId)
-                .orderByDesc(ChatMessage::getId)
-                .last("LIMIT " + MAX_HISTORY));
-        Collections.reverse(history);
-        StringBuilder sb = new StringBuilder();
-        for (ChatMessage message : history) {
-            sb.append(message.getRole()).append(": ").append(message.getContent()).append("\n");
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析模型回答：期望 {"content": "...", "references": ["第15条"]}；
-     * 模型未按 JSON 输出时退化为纯文本回答、引用置空，不让格式问题打断对话
-     */
-    private ChatAnswer parseAnswer(String answer, Map<String, DocumentSection> sectionByNo) {
-        String content = answer == null ? "" : answer;
-        List<Long> referenceIds = new ArrayList<>();
-        List<ChatReferenceVO> references = new ArrayList<>();
-        try {
-            JSONObject json = JSONUtil.parseObj(extractJson(answer));
-            content = json.getStr("content", content);
-            JSONArray refs = json.getJSONArray("references");
-            if (refs != null) {
-                for (Object sectionNo : refs) {
-                    DocumentSection section = sectionByNo.get(String.valueOf(sectionNo));
-                    if (section != null && !referenceIds.contains(section.getId())) {
-                        referenceIds.add(section.getId());
-                        references.add(toReference(section));
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("问答回答非 JSON 格式，按纯文本处理");
-        }
-        return new ChatAnswer(content, referenceIds, references);
     }
 
     private List<ChatReferenceVO> parseReferences(String referenceSections, Map<Long, DocumentSection> sectionById) {
@@ -275,16 +194,6 @@ public class DocChatService implements IChatService {
             log.warn("reference_sections 解析失败 : {}", referenceSections, e);
         }
         return references;
-    }
-
-    private Map<String, DocumentSection> indexBySectionNo(List<DocumentSection> sections) {
-        Map<String, DocumentSection> sectionByNo = new HashMap<>();
-        for (DocumentSection section : sections) {
-            if (section.getSectionNo() != null) {
-                sectionByNo.putIfAbsent(section.getSectionNo(), section);
-            }
-        }
-        return sectionByNo;
     }
 
     private List<DocumentSection> loadSections(Long documentId) {
@@ -319,22 +228,6 @@ public class DocChatService implements IChatService {
     }
 
     /**
-     * 剥离 ```json 围栏并截取首尾大括号之间内容
-     */
-    private String extractJson(String response) {
-        if (response == null || response.isBlank()) {
-            return "{}";
-        }
-        String cleaned = response
-                .replaceAll("```json\\s*", "")
-                .replaceAll("```\\s*", "")
-                .trim();
-        int start = cleaned.indexOf('{');
-        int end = cleaned.lastIndexOf('}');
-        return (start >= 0 && end > start) ? cleaned.substring(start, end + 1) : cleaned;
-    }
-
-    /**
      * 归属校验：会话不存在或非当前用户所有，统一按不存在处理，避免暴露他人资源
      */
     private ChatSession getOwnedSession(Long sessionId) {
@@ -353,11 +246,5 @@ public class DocChatService implements IChatService {
         if (document.getStatus() == null || document.getStatus() != 2) {
             throw new ServiceException(ResultCode.ANALYSIS_NOT_COMPLETED);
         }
-    }
-
-    /**
-     * 解析后的回答：正文 + 引用条款
-     */
-    private record ChatAnswer(String content, List<Long> referenceIds, List<ChatReferenceVO> references) {
     }
 }

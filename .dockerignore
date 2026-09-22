@@ -1,0 +1,10 @@
+# 构建上下文瘦身：注意不要排除 src/main/resources/models 下的 .onnx，OCR 依赖它
+target/
+**/target/
+.git/
+.idea/
+*.iml
+docs/
+.DS_Store
+**/.DS_Store
+anxin-web/src/test/java/com/anxin/ocr/testdocument/

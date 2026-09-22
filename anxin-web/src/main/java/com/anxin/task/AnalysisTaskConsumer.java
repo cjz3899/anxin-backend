@@ -1,4 +1,4 @@
-package com.anxin.rocketmq.consumer;
+package com.anxin.task;
 
 import com.anxin.constant.TaskConstant;
 import com.anxin.entity.AnalysisTask;
@@ -7,7 +7,6 @@ import com.anxin.enums.TaskStatus;
 import com.anxin.exception.NonRetryableTaskException;
 import com.anxin.mapper.AnalysisTaskMapper;
 import com.anxin.mapper.DocumentMapper;
-import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.anxin.service.support.DocumentAnalysisService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
@@ -17,7 +16,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 
 /**
- * 分析任务消费者（状态机核心，线程池版与 RocketMQ 版共用同一处理逻辑）
+ * 分析任务消费者（状态机核心，无论任务由本机线程池还是补偿扫描带进来，都走同一处理逻辑）
  * 幂等策略：条件更新抢占 PENDING → PROCESSING，抢占失败说明已被其它线程/实例处理，直接返回；
  * 状态只允许 PENDING → PROCESSING → SUCCESS/FAILED 单向流转，重试时置回 PENDING
  */

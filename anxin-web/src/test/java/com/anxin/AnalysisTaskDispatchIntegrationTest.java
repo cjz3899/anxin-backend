@@ -17,10 +17,10 @@ import com.anxin.mapper.DocumentSectionMapper;
 import com.anxin.mapper.RiskDetailMapper;
 import com.anxin.mapper.RiskResultMapper;
 import com.anxin.mapper.UserMapper;
-import com.anxin.rocketmq.consumer.AnalysisTaskConsumer;
-import com.anxin.rocketmq.message.AnalysisTaskMessage;
 import com.anxin.service.IDocumentService;
-import com.anxin.threadlocal.BaseContext;
+import com.anxin.support.DirectUploadFixture;
+import com.anxin.task.AnalysisTaskConsumer;
+import com.anxin.task.AnalysisTaskMessage;
 import com.anxin.vo.DocumentUploadVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.annotation.Resource;
@@ -33,7 +33,6 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.io.ByteArrayOutputStream;
@@ -51,11 +50,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
- * 上传 → RocketMQ 投递 → 消费状态机 集成测试（依赖本地 MySQL/Redis/RocketMQ 与 dev 配置）
+ * 上传 → 事务提交后线程池派发 → 消费状态机 集成测试（依赖本地 MySQL/Redis 与 dev 配置）
  */
-@SpringBootTest
+@SpringBootTest(properties = "anxin.task.compensation-enabled=false")
 @Slf4j
-class AnalysisTaskMqIntegrationTest {
+class AnalysisTaskDispatchIntegrationTest {
 
     private static final String TEST_OPENID = "test-openid-001";
 
@@ -87,20 +86,12 @@ class AnalysisTaskMqIntegrationTest {
     private RiskAnalyzer riskAnalyzer;
 
     @Test
-    void uploadDispatchAndConsume() throws InterruptedException {
+    void uploadDispatchAndConsume() throws Exception {
         when(riskAnalyzer.analyze(any())).thenReturn(mockAnalysisResult());
 
         Long userId = ensureTestUser();
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "contract.pdf", "application/pdf", contractPdf());
-
-        BaseContext.setCurrentId(userId);
-        DocumentUploadVO vo;
-        try {
-            vo = documentService.upload(file);
-        } finally {
-            BaseContext.remove();
-        }
+        DocumentUploadVO vo = DirectUploadFixture.upload(
+                documentService, userId, "contract.pdf", contractPdf());
 
         assertNotNull(vo.getDocumentId(), "documentId 未回填");
         assertNotNull(vo.getTaskId(), "taskId 未回填");
@@ -111,14 +102,14 @@ class AnalysisTaskMqIntegrationTest {
         AnalysisTask task = waitUntilFinished(taskId, Duration.ofSeconds(60));
         log.info("任务终态 status : {}, retryCount : {}, errorMessage : {}", task.getStatus(), task.getRetryCount(), task.getErrorMessage());
         assertEquals(TaskStatus.SUCCESS.getCode(), task.getStatus().intValue(),
-                "任务未在超时时间内到达 SUCCESS，请确认 RocketMQ broker 正在运行且消费日志无异常");
+                "任务未在超时时间内到达 SUCCESS，请确认分析线程池正常且消费日志无异常");
         assertEquals(0, task.getRetryCount(), "成功任务不应产生重试");
 
         Document document = documentMapper.selectById(documentId);
         assertNotNull(document, "document 记录不存在");
         assertEquals(TaskStatus.SUCCESS.getCode(), document.getStatus().intValue(), "document.status 未回写 SUCCESS");
 
-        assertSectionsAndRisks(documentId, taskId, "第一条链路验收");
+        assertSectionsAndRisks(documentId, taskId, "第一条链路验收", 1);
     }
 
     /**
@@ -127,20 +118,12 @@ class AnalysisTaskMqIntegrationTest {
      * 先删后插保证 document_section 不残留重复数据
      */
     @Test
-    void retryExhaustionMarksTaskAndDocumentFailed() throws InterruptedException {
+    void retryExhaustionMarksTaskAndDocumentFailed() throws Exception {
         when(riskAnalyzer.analyze(any())).thenThrow(new RuntimeException("Connection refused: api.deepseek.ai"));
 
         Long userId = ensureTestUser();
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "contract.pdf", "application/pdf", contractPdf());
-
-        BaseContext.setCurrentId(userId);
-        DocumentUploadVO vo;
-        try {
-            vo = documentService.upload(file);
-        } finally {
-            BaseContext.remove();
-        }
+        DocumentUploadVO vo = DirectUploadFixture.upload(
+                documentService, userId, "contract.pdf", contractPdf());
         Long taskId = Long.valueOf(vo.getTaskId());
         Long documentId = Long.valueOf(vo.getDocumentId());
 
@@ -161,11 +144,12 @@ class AnalysisTaskMqIntegrationTest {
         Document failedDocument = documentMapper.selectById(documentId);
         assertEquals(TaskStatus.FAILED.getCode(), failedDocument.getStatus().intValue(), "document.status 未同步置 FAILED");
 
-        assertSectionsAndRisks(documentId, taskId, "故障演练验收");
+        //条款已落库，但模型调用失败，结果表必须是空的——不能留下半截风险报告
+        assertSectionsAndRisks(documentId, taskId, "故障演练验收", 0);
     }
 
     /**
-     * 手动重复调用消费入口模拟 MQ 重投（当前重试仅置回 PENDING，无自动再投递），
+     * 手动重复调用消费入口驱动重投，不等 30 秒的补偿扫描周期，
      * 每轮失败 retry_count +1，最多 6 轮兜底，等待任务到达终态
      */
     private AnalysisTask driveRetriesUntilFinished(AnalysisTaskMessage message) throws InterruptedException {
@@ -188,10 +172,10 @@ class AnalysisTaskMqIntegrationTest {
     }
 
     /**
-     * 验收断言：document_section 与解析章节一一对应、risk_result 汇总正确、
-     * risk_detail 的 section_id 能对应到 document_section.id、无重复残留
+     * 验收断言：document_section 与解析章节一一对应，risk_result 条数按场景给定
+     * （成功链路 1 条并校验汇总与明细，失败链路 0 条），无重复残留
      */
-    private void assertSectionsAndRisks(Long documentId, Long taskId, String scene) {
+    private void assertSectionsAndRisks(Long documentId, Long taskId, String scene, int expectedRiskResults) {
         List<DocumentSection> sections = documentSectionMapper.selectList(new LambdaQueryWrapper<DocumentSection>()
                 .eq(DocumentSection::getDocumentId, documentId)
                 .orderByAsc(DocumentSection::getSort));
@@ -204,7 +188,11 @@ class AnalysisTaskMqIntegrationTest {
 
         List<RiskResult> results = riskResultMapper.selectList(new LambdaQueryWrapper<RiskResult>()
                 .eq(RiskResult::getTaskId, taskId));
-        assertEquals(1, results.size(), scene + "：risk_result 应恰好 1 条");
+        assertEquals(expectedRiskResults, results.size(),
+                scene + "：risk_result 应为 " + expectedRiskResults + " 条");
+        if (results.isEmpty()) {
+            return;
+        }
         RiskResult riskResult = results.get(0);
         assertEquals("发现2处风险条款", riskResult.getRiskSummary());
         assertEquals(1, riskResult.getHighCount().intValue());
@@ -222,7 +210,7 @@ class AnalysisTaskMqIntegrationTest {
     }
 
     /**
-     * 轮询等待任务离开 PENDING/PROCESSING（消费链路经真实 RocketMQ 异步完成）
+     * 轮询等待任务离开 PENDING/PROCESSING（消费链路经本机线程池异步完成）
      */
     private AnalysisTask waitUntilFinished(Long taskId, Duration timeout) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeout.toMillis();
