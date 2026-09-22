@@ -13,7 +13,9 @@ if [[ "${1:-}" == "--skip-build" ]]; then
 fi
 
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
-  mvn -B -q -DskipTests package
+  #必须带 clean：已删除源码的旧 class 会留在 target/classes 里被一起打进 fat jar，
+  #Spring 扫到同名 bean 会直接起不来（本地跑测试时就踩到过）
+  mvn -B -q clean package -DskipTests
 fi
 
 JAR="$(ls anxin-web/target/anxin-web-*.jar 2>/dev/null | head -1 || true)"
